@@ -72,14 +72,18 @@ def get_simplified_calibration(path_txt):
     raise ValueError('Matrix K_02 not found in the file')
 
 
-def check_conditions(line, category, method, thresh=0.3):
+def check_conditions(line, category, method, thresh=0.3, vehicles = False):
     """Check conditions of our or m3d txt file"""
 
     check = False
-    assert category in ['pedestrian', 'cyclist', 'all']
+    assert category in ['car','van', 'truck', 'pedestrian', 'cyclist', 'all']#['pedestrian', 'cyclist', 'all']
 
     if category == 'all':
-        category = ['pedestrian', 'person_sitting', 'cyclist']
+        if vehicles:
+            category = ['car', 'van']
+        else:
+            category = ['pedestrian', 'person_sitting', 'cyclist']
+        #['car', 'van', 'Truck']
 
     if method == 'gt':
         if line.split()[0].lower() in category:
@@ -129,7 +133,7 @@ def split_training(names_gt, path_train, path_val):
     return set_train, set_val
 
 
-def parse_ground_truth(path_gt, category, spherical=False, verbose=False):
+def parse_ground_truth(path_gt, category, spherical=False, verbose=False, vehicles = False):
     """Parse KITTI ground truth files"""
     from ..utils import correct_angle, to_spherical
 
@@ -142,7 +146,7 @@ def parse_ground_truth(path_gt, category, spherical=False, verbose=False):
     with open(path_gt, "r") as f_gt:
         for line_gt in f_gt:
             line = line_gt.split()
-            if check_conditions(line_gt, category, method='gt'):
+            if check_conditions(line_gt, category, method='gt', vehicles = vehicles):
                 truncs_gt.append(float(line[1]))
                 occs_gt.append(int(line[2]))
                 boxes_gt.append([float(x) for x in line[4:8]])
@@ -153,17 +157,27 @@ def parse_ground_truth(path_gt, category, spherical=False, verbose=False):
                 assert - math.pi <= yaw <= math.pi
                 alpha = float(line[3])
                 sin, cos, yaw_corr = correct_angle(yaw, xyz)
-                assert min(abs(-yaw_corr - alpha), (abs(yaw_corr - alpha))) < 0.15, "more than 10 degrees of error"
+                #assert min(abs(-yaw_corr - alpha), (abs(yaw_corr - alpha))) < 0.15, "more than 10 degrees of error"
+                if min(abs(-yaw_corr - alpha), (abs(yaw_corr - alpha))) >= 0.15:
+                    "more than 10 degrees of error"
+                    continue
                 if spherical:
                     rtp = to_spherical(xyz)
                     loc = rtp[1:3] + xyz[2:3] + rtp[0:1]  # [theta, psi, z, r]
                 else:
                     loc = xyz + [dd]
                 # cat = 0 if line[0] in ('Pedestrian', 'Person_sitting') else 1
-                if line[0] in ('Pedestrian', 'Person_sitting'):
-                    cat = 0
+
+                if vehicles:
+                    if line[0] in ('Car', 'Van'):
+                        cat = 0
+                    else:
+                        cat = 1
                 else:
-                    cat = 1
+                    if line[0] in ('Pedestrian', 'Person_sitting'):
+                        cat = 0
+                    else:
+                        cat = 1
                 output = loc + hwl + [sin, cos, yaw, cat]
                 ys.append(output)
                 if verbose:
@@ -199,11 +213,11 @@ def factory_file(path_calib, dir_ann, basename, mode='left'):
 
     if mode == 'left':
         kk, tt = p_left[:]
-        path_ann = os.path.join(dir_ann, basename + '.png.pifpaf.json')
+        path_ann = os.path.join(dir_ann, basename + '.png.predictions.json')
 
     else:
         kk, tt = p_right[:]
-        path_ann = os.path.join(dir_ann + '_right', basename + '.png.pifpaf.json')
+        path_ann = os.path.join(dir_ann + '_right', basename + '.png.predictions.json')
 
     from ..utils import open_annotations
     annotations = open_annotations(path_ann)

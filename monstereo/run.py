@@ -19,13 +19,17 @@ def cli():
     # Preprocess input data
     prep_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints', required=True)
     prep_parser.add_argument('--dataset',
-                             help='datasets to preprocess: nuscenes, nuscenes_teaser, nuscenes_mini, kitti',
+                             help='datasets to preprocess: nuscenes, nuscenes_teaser, nuscenes_mini, kitti, apolloscape',        
                              default='kitti')
     prep_parser.add_argument('--dir_nuscenes', help='directory of nuscenes devkit', default='data/nuscenes/')
+    prep_parser.add_argument('--dir_apolloscape', help='directory of the apolloscape dataser', default='data/apolloscape/' )
+    prep_parser.add_argument('--full_position', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    prep_parser.add_argument('--pifpaf_kps', help='indicates that we are using the keypoints processed ', action='store_true')
     prep_parser.add_argument('--iou_min', help='minimum iou to match ground truth', type=float, default=0.3)
     prep_parser.add_argument('--variance', help='new', action='store_true')
     prep_parser.add_argument('--activity', help='new', action='store_true')
     prep_parser.add_argument('--monocular', help='new', action='store_true')
+    prep_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
 
     # Predict (2D pose and/or 3D location from images)
     # General
@@ -37,6 +41,7 @@ def cli():
                                 help='what to output: json keypoints skeleton for Pifpaf'
                                      'json bird front combined for Monoloco')
     predict_parser.add_argument('--show', help='to show images', action='store_true')
+    predict_parser.add_argument('--joints_folder', help='Folder containing the pifpaf anotations', action='store_true')
 
     # Pifpaf
     nets.cli(predict_parser)
@@ -48,6 +53,8 @@ def cli():
     predict_parser.add_argument('--hidden_size', type=int, help='Number of hidden units in the model', default=512)
     predict_parser.add_argument('--path_gt', help='path of json file with gt 3d localization',
                                 default='data/arrays/names-kitti-200615-1022.json')
+
+    #
     predict_parser.add_argument('--transform', help='transformation for the pose', default='None')
     predict_parser.add_argument('--draw_box', help='to draw box in the images', action='store_true')
     predict_parser.add_argument('--z_max', type=int, help='maximum meters distance for predictions', default=22)
@@ -70,7 +77,9 @@ def cli():
     training_parser.add_argument('--save', help='whether to not save model and log file', action='store_true')
     training_parser.add_argument('-e', '--epochs', type=int, help='number of epochs to train for', default=500)
     training_parser.add_argument('--bs', type=int, default=512, help='input batch size')
-    training_parser.add_argument('--monocular', help='whether to train monoloco', action='store_true')
+    training_parser.add_argument('--monocular', help='whether to train monoloco', action='store_true')          #TRUE for us
+    training_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
+    training_parser.add_argument('--full_position', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
     training_parser.add_argument('--dropout', type=float, help='dropout. Default no dropout', default=0.2)
     training_parser.add_argument('--lr', type=float, help='learning rate', default=0.001)
     training_parser.add_argument('--sched_step', type=float, help='scheduler step time (epochs)', default=30)
@@ -81,9 +90,10 @@ def cli():
     training_parser.add_argument('--multiplier', type=int, help='Size of the grid of hyp search', default=1)
     training_parser.add_argument('--r_seed', type=int, help='specify the seed for training and hyp tuning', default=1)
     training_parser.add_argument('--activity', help='new', action='store_true')
+    training_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
 
     # Evaluation
-    eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti or nuscenes', default='kitti')
+    eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
     eval_parser.add_argument('--geometric', help='to evaluate geometric distance', action='store_true')
     eval_parser.add_argument('--generate', help='create txt files for KITTI evaluation', action='store_true')
     eval_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints (for KITTI evaluation)')
@@ -101,7 +111,8 @@ def cli():
     eval_parser.add_argument('--variance', help='evaluate keypoints variance', action='store_true')
     eval_parser.add_argument('--activity', help='evaluate activities', action='store_true')
     eval_parser.add_argument('--net', help='Choose network: monoloco, monoloco_p, monoloco_pp, monstereo')
-
+    eval_parser.add_argument('--full_position', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    eval_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
     args = parser.parse_args()
     return args
 
@@ -121,9 +132,13 @@ def main():
             from .prep.preprocess_nu import PreprocessNuscenes
             prep = PreprocessNuscenes(args.dir_ann, args.dir_nuscenes, args.dataset, args.iou_min)
             prep.run()
+        elif 'apolloscape' in args.dataset:
+            from .prep.preprocess_apollo import PreprocessApolloscape
+            #prep = PreprocessApolloscape(args.dir_ann, args.dir_nuscenes, args.vehilce, args.iou_min)
+            #prep.run()
         else:
             from .prep.prep_kitti import PreprocessKitti
-            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular)
+            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles)
             if args.activity:
                 prep.prep_activity()
             else:
@@ -134,7 +149,9 @@ def main():
         if args.hyp:
             hyp_tuning = HypTuning(joints=args.joints, epochs=args.epochs,
                                    monocular=args.monocular, dropout=args.dropout,
-                                   multiplier=args.multiplier, r_seed=args.r_seed)
+                                   multiplier=args.multiplier, r_seed=args.r_seed, 
+                                   vehicles = args.vehicles, kps_3d = args.full_position,
+                                   dataset = args.dataset)
             hyp_tuning.train()
         else:
 
@@ -142,7 +159,8 @@ def main():
             training = Trainer(joints=args.joints, epochs=args.epochs, bs=args.bs,
                                monocular=args.monocular, dropout=args.dropout, lr=args.lr, sched_step=args.sched_step,
                                n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
-                               r_seed=args.r_seed, save=args.save)
+                               r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.full_position,
+                               dataset = args.dataset)
 
             _ = training.train()
             _ = training.evaluate()
@@ -170,12 +188,12 @@ def main():
             if args.generate:
                 from .eval.generate_kitti import GenerateKitti
                 kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
-                                          hidden_size=args.hidden_size)
+                                          hidden_size=args.hidden_size, vehicles = args.vehicles)
                 kitti_txt.run()
 
             if args.dataset == 'kitti':
                 from .eval import EvalKitti
-                kitti_eval = EvalKitti(verbose=args.verbose)
+                kitti_eval = EvalKitti(verbose=args.verbose, vehicles = args.vehicles)
                 kitti_eval.run()
                 kitti_eval.printer(show=args.show, save=args.save)
 
@@ -184,6 +202,11 @@ def main():
                 training = Trainer(joints=args.joints, hidden_size=args.hidden_size)
                 _ = training.evaluate(load=True, model=args.model, debug=False)
 
+            elif 'apolloscape' in args.dataset:
+                from .train import Trainer
+                training = Trainer(joints=args.joints, hidden_size=args.hidden_size, dataset=args.dataset, monocular = args.monocular, vehicles =True, 
+                                    kps_3d = args.full_position )
+                _ = training.evaluate(load=True, model=args.model, debug=False)
             else:
                 raise ValueError("Option not recognized")
 

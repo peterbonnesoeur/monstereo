@@ -6,6 +6,7 @@ given 2d joints
 """
 
 import copy
+import numpy as np
 import os
 import datetime
 import logging
@@ -24,33 +25,36 @@ from .datasets import KeypointsDataset
 from .losses import CompositeLoss, MultiTaskLoss, AutoTuneMultiTaskLoss
 from ..network import extract_outputs, extract_labels
 from ..network.architectures import SimpleModel
-from ..utils import set_logger
+from ..utils import set_logger, threshold_loose, threshold_mean, threshold_strict
 
 
 class Trainer:
     # Constants
-    VAL_BS = 10000
+    VAL_BS = 14000
 
     tasks = ('d', 'x', 'y', 'h', 'w', 'l', 'ori', 'aux')
     val_task = 'd'
-    lambdas = (1, 1, 1, 1, 1, 1, 1, 1)
+    lambdas = tuple([1]*len(tasks))
 
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
-                 monocular=False, save=False, print_loss=True):
+                 monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti'):
         """
         Initialize directories, load the data and parameters for the training
         """
 
         # Initialize directories and parameters
         dir_out = os.path.join('data', 'models')
+
         if not os.path.exists(dir_out):
             warnings.warn("Warning: output directory not found, the model will not be saved")
         dir_logs = os.path.join('data', 'logs')
         if not os.path.exists(dir_logs):
             warnings.warn("Warning: default logs directory not found")
         assert os.path.exists(joints), "Input file not found"
-
+        self.kps_3d = kps_3d
+        self.vehicles = vehicles
+        self.dataset =dataset
         self.joints = joints
         self.num_epochs = epochs
         self.save = save
@@ -66,6 +70,13 @@ class Trainer:
         self.n_samples = n_samples
         self.r_seed = r_seed
         self.auto_tune_mtl = False
+
+        self.identifier = '' #Used to differentiate the training models
+        if self.vehicles:
+            self.identifier+='-vehicles'
+        
+        if not self.monocular:
+            self.identifier+="-stereo"
 
         # Select the device
         use_cuda = torch.cuda.is_available()
@@ -88,32 +99,49 @@ class Trainer:
             self.mt_loss = MultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks)
         self.mt_loss.to(self.device)
 
+        #! TODO : modifiy those input/outputs (or do a bridge with previous infos)
         if not self.monocular:
-            input_size = 68
-            output_size = 10
-        else:
-            input_size = 34
-            output_size = 9
 
+            if self.vehicles :
+                input_size = 24*2*2
+                if self.kps_3d:
+                    output_size = 24
+                else:
+                    output_size = 10
+            else:
+                input_size = 68
+                output_size = 10
+        else:
+            if self.vehicles :
+                input_size = 24*2
+                if self.kps_3d:
+                    output_size = 24
+                else:
+                    output_size = 9
+            else:
+                input_size = 34
+                output_size = 9
+
+        print("input size : ",input_size, "\noutput size : ", output_size )
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M")[2:]
         name_out = 'ms-' + now_time
         if self.save:
-            self.path_model = os.path.join(dir_out, name_out + '.pkl')
+            self.path_model = os.path.join(dir_out, name_out + self.identifier + '.pkl')
             self.logger = set_logger(os.path.join(dir_logs, name_out))
             self.logger.info("Training arguments: \nepochs: {} \nbatch_size: {} \ndropout: {}"
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
-                             "\nr_seed: {} \nlambdas: {} \ninput_file: {}"
+                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {}  "
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
-                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints))
+                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)
 
         # Dataloader
         self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase),
-                                              batch_size=bs, shuffle=True) for phase in ['train', 'val']}
+                                              batch_size=bs, shuffle=True, drop_last=True) for phase in ['train', 'val']} #the drop_last flag is only there to forget the latest value o the dataset in case of a batch normalization where we don't have more than 1 input in the batch
 
         self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase))
                               for phase in ['train', 'val']}
@@ -130,7 +158,7 @@ class Trainer:
 
         # Optimizer and scheduler
         all_params = chain(self.model.parameters(), self.mt_loss.parameters())
-        self.optimizer = torch.optim.Adam(params=all_params, lr=lr)
+        self.optimizer = torch.optim.Adam(params=all_params, lr=lr)               
         self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=self.sched_step, gamma=self.sched_gamma)
 
     def train(self):
@@ -150,7 +178,9 @@ class Trainer:
                 else:
                     self.model.eval()  # Set model to evaluate mode
 
+                
                 for inputs, labels, _, _ in self.dataloaders[phase]:
+                    #print(inputs, phase, inputs.size())
                     inputs = inputs.to(self.device)
                     labels = labels.to(self.device)
                     with torch.set_grad_enabled(phase == 'train'):
@@ -234,10 +264,13 @@ class Trainer:
             # Evaluate performances on different clusters and save statistics
             for clst in self.clusters:
                 inputs, labels, size_eval = dataset.get_cluster_annotations(clst)
+                if inputs is None:
+                    continue
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
 
                 # Forward pass on each cluster
                 outputs = self.model(inputs)
+                print(outputs.size)
                 self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst=clst)
                 self.cout_stats(dic_err['val'], size_eval, clst=clst)
 
@@ -256,15 +289,17 @@ class Trainer:
 
         loss, loss_values = self.mt_loss(outputs, labels, phase='val')
         rel_frac = outputs.size(0) / size_eval
-
+        print(outputs.size(0) , size_eval)
         tasks = self.tasks[:-1] if self.tasks[-1] == 'aux' else self.tasks  # Exclude auxiliary
 
         for idx, task in enumerate(tasks):
             dic_err[clst][task] += float(loss_values[idx].item()) * (outputs.size(0) / size_eval)
 
-        # Distance
+        # Distance 
+
         errs = torch.abs(extract_outputs(outputs)['d'] - extract_labels(labels)['d'])
 
+        #! TO RESOLVE
         assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
@@ -274,6 +309,47 @@ class Trainer:
         dic_err[clst]['bi'] += bi * rel_frac
         dic_err[clst]['bi%'] += bi_perc * rel_frac
         dic_err[clst]['std'] = errs.std()
+
+        # Only for apolloscape evaluation :
+        if self.dataset =='apolloscape':
+
+            #print(threshold_mean)
+
+            selected = extract_labels(labels)['d'] < 100
+
+            #print(len(selected), torch.sum(selected))
+            errs = (torch.abs(extract_outputs(outputs)['d'][selected] - extract_labels(labels)['d'][selected]))
+
+            #print(type(selected), type(torch.Tensor([False]*len(selected))))
+            #print("OUTPUTS :\n", extract_outputs(outputs)['xyzd'][:,:3] , "\nLABELS : \n",extract_labels(labels)['xyzd'][:,:3])
+            #print(selected[:,0])
+
+            errs = torch.norm(extract_outputs(outputs)['xyzd'][:,:3] - extract_labels(labels)['xyzd'][:,:3] , p = 2, dim = 1)[selected[:,0]]
+
+            #print(errs)
+
+            dic_err[clst]['threshold_loose_abs']= [torch.sum((errs < threshold_loose[1])).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_strict_abs']= [torch.sum( errs < threshold_strict[1]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_mean_abs'] = [torch.sum( errs < threshold_mean[1]).double()/torch.sum(selected)]
+
+
+            errs = (torch.abs((extract_outputs(outputs)['d'][selected] - extract_labels(labels)['d'][selected])/ extract_labels(labels)['d'][selected]))
+            
+            
+            equation = torch.abs( (extract_outputs(outputs)['xyzd'][:,:3] - extract_labels(labels)['xyzd'][:,:3] )/extract_labels(labels)['xyzd'][:,:3])
+            errs = torch.norm(equation , p = 2, dim = 1)[selected[:,0]]
+
+            #print(errs)
+            dic_err[clst]['threshold_loose_rel']= [torch.sum((errs < threshold_loose[3])).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_strict_rel']= [torch.sum( errs < threshold_strict[3]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_mean_rel'] = [torch.sum( errs < threshold_mean[3]).double()/torch.sum(selected)]
+
+
+            errs_angles = (extract_outputs(outputs)['yaw'][0] - extract_labels(labels)['yaw'][0])[selected]
+
+            dic_err[clst]['threshold_loose_ang']= [torch.sum((errs_angles < threshold_loose[2])).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_strict_ang']= [torch.sum( errs_angles < threshold_strict[2]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_mean_ang'] = [torch.sum( errs_angles < threshold_mean[2]).double()/torch.sum(selected)]
 
         # (Don't) Save auxiliary task results
         if self.monocular:
@@ -299,17 +375,41 @@ class Trainer:
                                      dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
                                      dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
                                      dic_err[clst]['l'] * 100, dic_err[clst]['aux'] * 100))
+
+            if self.dataset == 'apolloscape':
+
+                self.logger_apolloscape(clst, dic_err)
+
             if self.auto_tune_mtl:
                 self.logger.info("Sigmas: Z: {:.2f}, X: {:.2f}, Y:{:.2f}, H: {:.2f}, W: {:.2f}, L: {:.2f}, ORI: {:.2f}"
                                  " AUX:{:.2f}\n"
                                  .format(*dic_err['sigmas']))
         else:
+
             self.logger.info("Val err clust {} --> D:{:.2f}m,  bi:{:.2f} ({:.1f}%), STD:{:.1f}m   X:{:.1f} Y:{:.1f}  "
                              "Ori:{:.1f}d,   H: {:.0f} W: {:.0f} L:{:.0f}  for {} pp. "
                              .format(clst, dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
                                      dic_err[clst]['std'], dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
                                      dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
                                      dic_err[clst]['l'] * 100, size_eval))
+
+            if self.dataset == 'apolloscape':
+
+                self.logger_apolloscape(clst,dic_err)
+                
+
+
+
+    def logger_apolloscape(self, clst, dic_err):
+        
+        self.logger.info("Apolloscape evaluation, for cluster : {} val set: \n"
+                   "Threshold loose : distance abs ; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
+                    "Threshold strict : distance abs; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
+                    "Threshold mean : distance abs ; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
+                    .format(clst,
+                            dic_err[clst]['threshold_loose_abs'][0]*100, dic_err[clst]['threshold_loose_rel'][0]*100,  dic_err[clst]['threshold_loose_ang'][0], 
+                            dic_err[clst]['threshold_strict_abs'][0]*100,  dic_err[clst]['threshold_strict_rel'][0]*100,  dic_err[clst]['threshold_strict_ang'][0],
+                            dic_err[clst]['threshold_mean_abs'][0] * 100, dic_err[clst]['threshold_mean_rel'][0]*100, dic_err[clst]['threshold_mean_ang'][0] ))
 
     def cout_values(self, epoch, epoch_losses, running_loss):
 

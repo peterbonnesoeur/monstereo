@@ -15,7 +15,7 @@ D_MIN = BF / z_max
 D_MAX = BF / z_min
 
 
-def preprocess_monstereo(keypoints, keypoints_r, kk):
+def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False):
     """
     Combine left and right keypoints in all-vs-all settings
     """
@@ -23,7 +23,10 @@ def preprocess_monstereo(keypoints, keypoints_r, kk):
     inputs_l = preprocess_monoloco(keypoints, kk)
     inputs_r = preprocess_monoloco(keypoints_r, kk)
 
-    inputs = torch.empty((0, 68)).to(inputs_l.device)
+    if vehicles:
+        inputs = torch.empty((0, 96)).to(inputs_l.device)
+    else:
+        inputs = torch.empty((0, 68)).to(inputs_l.device)
     for idx, inp_l in enumerate(inputs_l.split(1)):
         clst = 0
         # inp_l = torch.cat((inp_l, cat[:, idx:idx+1]), dim=1)
@@ -68,7 +71,7 @@ def factory_for_gt(im_size, name=None, path_gt=None, verbose=True):
             dic_names = json.load(f)
         if verbose:
             print('-' * 120 + "\nGround-truth file opened")
-    except (FileNotFoundError, TypeError):
+    except (FileNotFoundError, TypeError): 
         if verbose:
             print('-' * 120 + "\nGround-truth file not found")
         dic_names = {}
@@ -202,18 +205,18 @@ def preprocess_pifpaf(annotations, im_size=None, enlarge_boxes=True, min_conf=0.
             box.append(conf)
             boxes.append(box)
             keypoints.append(kps)
-
+        #print("RESULTS", boxes, keypoints)
     return boxes, keypoints
 
 
 def prepare_pif_kps(kps_in):
     """Convert from a list of 51 to a list of 3, 17"""
-
+    #print("KPS",len(kps_in))
     assert len(kps_in) % 3 == 0, "keypoints expected as a multiple of 3"
     xxs = kps_in[0:][::3]
     yys = kps_in[1:][::3]  # from offset 1 every 3
     ccs = kps_in[2:][::3]
-
+    #print("XXS",len(xxs))
     return [xxs, yys, ccs]
 
 
@@ -236,12 +239,12 @@ def extract_outputs(outputs, tasks=()):
          - if tasks are provided return ordered list of raw tensors
          - else return a dictionary with processed outputs
     """
-    dic_out = {'x': outputs[:, 0:1],
-               'y': outputs[:, 1:2],
+    dic_out = {'x': outputs[:, 0],
+               'y': outputs[:, 1],
                'd': outputs[:, 2:4],
-               'h': outputs[:, 4:5],
-               'w': outputs[:, 5:6],
-               'l': outputs[:, 6:7],
+               'h': outputs[:, 4],
+               'w': outputs[:, 5],
+               'l': outputs[:, 6],
                'ori': outputs[:, 7:9]}
 
     if outputs.shape[1] == 10:
@@ -301,6 +304,17 @@ def extract_labels(labels, tasks=None):
         return [dic_gt_out[task] for task in tasks]
 
     dic_gt_out = {key: el.detach().cpu() for key, el in dic_gt_out.items()}
+
+    x = to_cartesian(labels[:, 0:3].detach().cpu(), mode='x')
+    y = to_cartesian(labels[:, 0:3].detach().cpu(), mode='y')
+    d = dic_gt_out['d'][:, 0:1]
+    z = torch.sqrt(d**2 - x**2 - y**2)
+    dic_gt_out['xyzd'] = torch.cat((x, y, z, d), dim=1)
+
+    yaw_pred = torch.atan2(dic_gt_out['ori'][:, 0:1], dic_gt_out['ori'][:, 1:2])
+    yaw_orig = back_correct_angles(yaw_pred, dic_gt_out['xyzd'][:, 0:3])
+    dic_gt_out['yaw'] = (yaw_pred, yaw_orig)  # alpha, ry
+
     return dic_gt_out
 
 

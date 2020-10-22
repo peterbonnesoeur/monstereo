@@ -79,7 +79,7 @@ def get_keypoints(keypoints, mode):
     assert len(keypoints.size()) == 3 and keypoints.size()[1] == 3, "tensor dimensions not recognized"
     assert mode in ['center', 'bottom', 'head', 'shoulder', 'hip', 'ankle']
 
-    kps_in = keypoints[:, 0:2, :]  # (m, 2, 17)
+    kps_in = keypoints[:, 0:2, :]  # (m, 2, 17) #Only take the kepoints positions and forget the confidence metric
     if mode == 'center':
         kps_max, _ = kps_in.max(2)  # returns value, indices
         kps_min, _ = kps_in.min(2)
@@ -215,8 +215,9 @@ def to_spherical(xyz):
     xyz = np.array(xyz)
     r = np.linalg.norm(xyz)
     theta = math.atan2(xyz[2], xyz[0])
-
-    assert 0 <= theta < math.pi   # 0 when positive x and no z.
+    if theta < 0 or theta > math.pi :  # 0 when positive x and no z.:
+        print("here", theta, math.pi)
+    #assert 0 <= theta < math.pi   # 0 when positive x and no z.
     psi = math.acos(xyz[1] / r)
     assert 0 <= psi <= math.pi
     return [r, theta, psi]

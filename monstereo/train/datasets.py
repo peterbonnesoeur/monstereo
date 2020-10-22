@@ -43,7 +43,7 @@ class ActivityDataset(Dataset):
 
 class KeypointsDataset(Dataset):
     """
-    Dataloader fro nuscenes or kitti datasets
+    Dataloader from nuscenes or kitti datasets
     """
 
     def __init__(self, joints, phase):
@@ -85,6 +85,10 @@ class KeypointsDataset(Dataset):
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster
         """
+        if clst not in list(self.dic_clst.keys()):
+            print("Cluster {} not in the data list :{}", clst, list(self.dic_clst.keys()))
+            return None, None, None
+
         inputs = torch.tensor(self.dic_clst[clst]['X'])
         outputs = torch.tensor(self.dic_clst[clst]['Y']).float()
         count = len(self.dic_clst[clst]['Y'])
