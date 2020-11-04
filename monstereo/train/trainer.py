@@ -81,7 +81,13 @@ class Trainer:
         if not self.monocular:
             self.identifier+="-stereo"
 
-        self.identifier+="_"+dataset
+        if "loose" in joints:
+            self.identifier+="-loose"
+        
+        if  "originals" in joints:
+            self.identifier+="-originals"
+
+        self.identifier+="-"+dataset
         # Select the device
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
@@ -128,16 +134,27 @@ class Trainer:
         print("input size : ",input_size, "\noutput size : ", output_size )
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M")[2:]
-        name_out = 'ms-' + now_time
+        name_out = 'ms-' + now_time + self.identifier 
+
+        try:
+            process_mode = os.environ["process_mode"]
+        except:
+            process_mode = "NULL"
+
+        try:
+            dropout_images = os.environ["dropout"]
+        except:
+            dropout_images = "NULL"
+
         if self.save:
-            self.path_model = os.path.join(dir_out, name_out + self.identifier + '.pkl')
-            self.logger = set_logger(os.path.join(dir_logs, name_out))
+            self.path_model = os.path.join(dir_out, name_out + '.pkl')
+            self.logger = set_logger(os.path.join(dir_logs, name_out+".txt"))
             self.logger.info("Training arguments: \nepochs: {} \nbatch_size: {} \ndropout: {}"
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
-                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {}  "
+                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {} \nprocess_mode: {} \ndropout_images: {}  "
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
-                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d))
+                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d, process_mode, dropout_images))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)

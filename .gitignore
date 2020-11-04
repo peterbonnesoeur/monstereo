@@ -16,3 +16,6 @@ docs/
 *.ipynb
 *.out
 *.sh
+*.run
+*.csv
+excel_makel_kitti.py

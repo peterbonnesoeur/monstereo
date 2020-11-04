@@ -12,14 +12,13 @@ from ..utils import get_task_error, get_pixel_error
 
 DIR_OUT ='docs/eval'
 
-def show_results(dic_stats, our_methods, clusters, show=False, save=False, stereo=True, vehicles=False):
+def show_results(dic_stats, our_methods, clusters, show=False, save=False, stereo=True, identifier='', vehicles = False):
     """
     Visualize error as function of the distance and compare it with target errors based on human height analyses
     """
 
-    dir_out = DIR_OUT
-    if vehicles:
-        dir_out+="_car"
+    dir_out = DIR_OUT+identifier
+    
     phase = 'test'
     x_min = 3
     if vehicles:
@@ -75,13 +74,12 @@ def show_results(dic_stats, our_methods, clusters, show=False, save=False, stere
     plt.close('all')
 
 
-def show_spread(dic_stats, clusters, show=False, save=False, vehicles = False):
+def show_spread(dic_stats, clusters, show=False, save=False, identifier = ''):
     """Predicted confidence intervals and task error as a function of ground-truth distance"""
 
     phase = 'test'
-    dir_out = DIR_OUT
-    if vehicles:
-        dir_out+="_car"    
+    dir_out = DIR_OUT+identifier
+
     excl_clusters = ['all', 'easy', 'moderate', 'hard']
     clusters = [clst for clst in clusters if clst not in excl_clusters]
     x_min = 3
@@ -121,12 +119,11 @@ def show_spread(dic_stats, clusters, show=False, save=False, vehicles = False):
         plt.close('all')
 
 
-def show_task_error(show, save, vehicles = False):
+def show_task_error(show, save, identifier=''):
     """Task error figure"""
     plt.figure(3)
-    dir_out = DIR_OUT
-    if vehicles:
-        dir_out+="_car"
+    dir_out = DIR_OUT+identifier
+
     xx = np.linspace(0.1, 50, 100)
     mu_men = 178
     mu_women = 165
@@ -161,11 +158,10 @@ def show_task_error(show, save, vehicles = False):
     plt.close('all')
 
 
-def show_method(save, vehicles = False):
+def show_method(save, identifier=''):
     """ method figure"""
-    dir_out = DIR_OUT
-    if vehicles:
-        dir_out+="_car"
+    dir_out = DIR_OUT+identifier
+
     std_1 = 0.75
     fig = plt.figure(1)
     ax = fig.add_subplot(1, 1, 1)
@@ -189,11 +185,10 @@ def show_method(save, vehicles = False):
         print("Figure of method saved in {}".format(path_fig))
 
 
-def show_box_plot(dic_errors, clusters, show=False, save=False, vehicles = False):
+def show_box_plot(dic_errors, clusters, show=False, save=False, identifier=''):
+    
     import pandas as pd
-    dir_out = DIR_OUT
-    if vehicles:
-        dir_out+="_car"
+    dir_out = DIR_OUT+identifier
     excl_clusters = ['all', 'easy', 'moderate', 'hard']
     clusters = [int(clst) for clst in clusters if clst not in excl_clusters]
     methods = ('monstereo', 'pseudo-lidar', '3dop', 'monoloco_pp', 'monoloco', 'm3d')

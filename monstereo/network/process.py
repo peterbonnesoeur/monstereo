@@ -99,33 +99,45 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False):
     return kps_out
 
 def clear_keypoints(keypoints, nb_dim = 2):
+    
+    try:
+        process_mode = os.environ["process_mode"]
+    except:
+        return keypoints
+
+    if process_mode=='':
+        return keypoints
 
     for i, kps in enumerate(keypoints):
 
         #ensure that the  values are stored in the GPU
         mean = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].mean(dim = 1).to(keypoints.device) 
         mean[mean != mean] = 0      # set Nan to 0
-        #mean =(torch.ones(mean.size())*(-1000)).to(keypoints.device) 
-        if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-            keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]<=0)] = torch.transpose(mean.repeat((keypoints[i,nb_dim, :]<=0).sum() , 1), 0, 1)
-
-
-        #? Try to generate a subset of "synthetic keypoints according to a normal distribution
+        if process_mode == 'neg':
+            mean =(torch.ones(mean.size())*(-1000)).to(keypoints.device) 
+        elif process_mode == 'zero':
+            mean =(torch.ones(mean.size())*(-1000)).to(keypoints.device) 
         
-        std = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].std(dim = 1).to(keypoints.device) 
-        std[std != std] = 0      # set Nan to 0
-    
-        if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-            #Generation of an array of sythetic keypoints
+        if process_mode =='zero' or process_mode == 'mean' or process_mode == 'neg':
+            if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
+                keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]<=0)] = torch.transpose(mean.repeat((keypoints[i,nb_dim, :]<=0).sum() , 1), 0, 1)
 
-            #print("BEFORE", keypoints[i, 0:nb_dim, :] )
-            for j in range(len(keypoints[i,nb_dim, :])):
-                #out_new = torch.normal(mean = mean, std = std).unsqueeze(0) 
-                #out_prev= torch.cat([out_prev, out_new], dim = 0)
-                if keypoints[i,nb_dim, j]<=0:
-                    keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
+        if process_mode=='mean_std':
+            #? Try to generate a subset of "synthetic keypoints according to a normal distribution
+            
+            std = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].std(dim = 1).to(keypoints.device) 
+            std[std != std] = 0      # set Nan to 0
+        
+            if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
+                #Generation of an array of sythetic keypoints
 
-            #print("AFTER", keypoints[i, 0:nb_dim, :] )"""
+                #print("BEFORE", keypoints[i, 0:nb_dim, :] )
+                for j in range(len(keypoints[i,nb_dim, :])):
+                    #out_new = torch.normal(mean = mean, std = std).unsqueeze(0) 
+                    #out_prev= torch.cat([out_prev, out_new], dim = 0)
+                    if keypoints[i,nb_dim, j]<=0:
+                        keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
+
         
     return keypoints
 

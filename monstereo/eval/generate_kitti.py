@@ -26,7 +26,7 @@ NUM_ANNOTATIONS = 7481
 class GenerateKitti:
 
     METHODS = ['monstereo', 'monoloco_pp', 'monoloco', 'geometric']
-    METHODS = ['monoloco_pp', 'monstereo']
+    METHODS = ['monoloco_pp']
 
 
     def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, model_mono = None):

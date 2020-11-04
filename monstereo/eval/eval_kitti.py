@@ -13,7 +13,7 @@ from collections import defaultdict
 from tabulate import tabulate
 
 from ..utils import get_iou_matches, get_task_error, get_pixel_error, check_conditions, \
-    get_difficulty, split_training, parse_ground_truth, get_iou_matches_matrix
+    get_difficulty, split_training, parse_ground_truth, get_iou_matches_matrix, set_logger
 from ..visuals import show_results, show_spread, show_task_error, show_box_plot
 
 
@@ -24,7 +24,7 @@ class EvalKitti:
     CLUSTERS = ('easy', 'moderate', 'hard', 'all', '3', '5', '7', '9', '11', '13', '15', '17', '19', '21', '23', '25',
                 '27', '29', '31', '49', '54', '63', '74')
     ALP_THRESHOLDS = ('<0.5m', '<1m', '<2m')
-    OUR_METHODS = ['monoloco_pp', 'monstereo']#['geometric', 'monoloco', 'monoloco_pp', 'pose', 'reid', 'monstereo']
+    OUR_METHODS = ['monoloco_pp']#['geometric', 'monoloco', 'monoloco_pp', 'pose', 'reid', 'monstereo']
     METHODS_MONO = ['m3d']#, 'monopsr']
     METHODS_STEREO = ['3dop', 'pseudo-lidar']#['3dop', 'psf', 'pseudo-lidar', 'e2e', 'oc-stereo']
     BASELINES = []#'task_error', 'pixel_error']
@@ -41,6 +41,18 @@ class EvalKitti:
         self.methods = self.OUR_METHODS + self.METHODS_MONO + self.METHODS_STEREO
 
         self.categories = self.CATEGORIES if not vehicles else ('car', )
+
+        self.identifier=''
+        if vehicles:
+            self.identifier+='_car'
+        else:
+            self.identifier+='_human'
+
+        now = datetime.datetime.now()
+        now_time = now.strftime("%Y%m%d-%H%M")[2:]
+        name_out = 'ms-' + now_time+'-'+"eval"+".txt"
+        self.logger = set_logger(os.path.join('data', 'logs', name_out))
+
 
         path_train = os.path.join('splits', 'kitti_train.txt')
         path_val = os.path.join('splits', 'kitti_val.txt')
@@ -63,6 +75,7 @@ class EvalKitti:
             index = self.methods.index('pseudo-lidar')
             self.methods.pop(index)
             print(self.methods)
+            self.logger.info(self.methods)
         if 'monopsr' in self.methods:
             self.dic_thresh_conf['monopsr'] += 0.3
         self.dic_thresh_conf['e2e-pl'] = -100  # They don't have enough detections
@@ -130,18 +143,24 @@ class EvalKitti:
                                        self.dic_stds[key][clst], key)
                     except ZeroDivisionError:
                         print('\n'+'-'*100 + '\n'+f'ERROR: method {key} at cluster {clst} is empty' + '\n'+'-'*100+'\n')
+                        self.logger.info('\n'+'-'*100 + '\n'+f'ERROR: method {key} at cluster {clst} is empty' + '\n'+'-'*100+'\n')
                         raise
 
             # Show statistics
             print('\n' + self.category.upper() + ':')
+            self.logger.info('\n' + self.category.upper() + ':')
             self.show_statistics()
+            self.show_statistics_logger()
 
     def printer(self, show, save):
+
+
+        
         if save or show:
-            show_results(self.dic_stats,self.methods ,self.CLUSTERS, show, save, vehicles=self.vehicles)
-            show_spread(self.dic_stats, self.CLUSTERS, show, save, vehicles=self.vehicles)
-            show_box_plot(self.errors, self.CLUSTERS, show, save, vehicles=self.vehicles)
-            show_task_error(show, save, vehicles=self.vehicles)
+            show_results(self.dic_stats,self.methods ,self.CLUSTERS, show, save, identifier=self.identifier, vehicles = self.vehicles)
+            show_spread(self.dic_stats, self.CLUSTERS, show, save, identifier=self.identifier)
+            show_box_plot(self.errors, self.CLUSTERS, show, save, identifier=self.identifier)
+            show_task_error(show, save, identifier=self.identifier)
 
     def _parse_txts(self, path, method):
 
@@ -301,6 +320,82 @@ class EvalKitti:
         dic_stds['all']['prec_2'].append(prec_2)
         dic_stds[clst]['prec_2'].append(prec_2)
         dic_stds[mode]['prec_2'].append(prec_2)
+
+
+    def show_statistics_logger(self):
+
+        all_methods = self.methods + self.BASELINES
+        self.logger.info('-'*90)
+        self.summary_table_logger(all_methods)
+
+        # Uncertainty
+        for net in ('monoloco_pp', 'monstereo'):
+            self.logger.info(('-'*100))
+            self.logger.info(net.upper())
+
+            try:
+                process_mode = os.environ["process_mode"]
+            except:
+                process_mode = "NULL"
+
+            self.logger.info("Process mode: {}".format(process_mode))
+            try:
+                dropout_images = os.environ["dropout"]
+            except:
+                dropout_images = "NULL"
+
+            self.logger.info("Dropout images: {}".format(dropout_images))
+
+            
+            for clst in ('easy', 'moderate', 'hard', 'all'):
+                self.logger.info(" Annotations in clst {}: {:.0f}, Recall: {:.1f}. Precision: {:.2f}, Relative size is {:.1f} %"
+                      .format(clst,
+                              self.dic_stats['test'][net][clst]['cnt'],
+                              self.dic_stats['test'][net][clst]['interval']*100,
+                              self.dic_stats['test'][net][clst]['prec_1'],
+                              self.dic_stats['test'][net][clst]['epi_rel']*100))
+
+        if self.verbose:
+            for key in all_methods:
+                
+                for clst in self.CLUSTERS[:4]:
+                    self.logger.info(" {} Average error in cluster {}: {:.2f} with a max error of {:.1f}, "
+                          "for {} annotations"
+                          .format(key, clst, self.dic_stats['test'][key][clst]['mean'],
+                                  self.dic_stats['test'][key][clst]['max'],
+                                  self.dic_stats['test'][key][clst]['cnt']))
+
+                for perc in self.ALP_THRESHOLDS:
+                    self.logger.info("{} Instances with error {}: {:.2f} %"
+                          .format(key, perc, 100 * average(self.errors[key][perc])))
+                try:
+                    self.logger.info("\nMatched annotations: {:.1f} %".format(self.errors[key]['matched']))
+                    self.logger.info(" Detected annotations : {}/{} ".format(self.dic_cnt[key], self.cnt_gt['all']))
+                    self.logger.info("-" * 100)
+                except(TypeError):
+                    self.logger.info("Nothing detected")
+            self.logger.info("precision 1: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_1']))
+            self.logger.info("precision 2: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_2']))
+
+
+    def summary_table_logger(self, all_methods):
+        """Tabulate table for ALP and ALE metrics"""
+
+        self.logger.info("METHODS")
+
+        alp = [[str(100 * average(self.errors[key][perc]))[:5]
+                for perc in ['<0.5m', '<1m', '<2m']]
+               for key in all_methods]
+
+        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:4] + ' [' +
+                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:2] + '%]'
+                for clst in self.CLUSTERS[:4]]
+               for key in all_methods]
+
+        results = [[key] + alp[idx] + ale[idx] for idx, key in enumerate(all_methods)]
+        self.logger.info("\n"+ tabulate(results, headers=self.HEADERS))
+        self.logger.info('-' * 90 + '\n')
+
 
     def show_statistics(self):
 

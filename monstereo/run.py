@@ -32,6 +32,7 @@ def cli():
     prep_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
     prep_parser.add_argument('--buffer', help='indicates the quantity of keypoints used from the car models to do the assignment between 2D adn 3D keypoints', default = 20)
     prep_parser.add_argument('--radius', help='Radius to determine wether one set of keypoint can be assimilated to which vehicle in the reprojected 3D model view', default = 200)
+    prep_parser.add_argument('--dropout', help='probability of dropout of the pifpaf keypoints during the processing', type=float, default = 0.0)
 
     # Predict (2D pose and/or 3D location from images)
     # General
@@ -147,7 +148,7 @@ def main():
             prep.run()
         else:
             from .prep.prep_kitti import PreprocessKitti
-            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles)
+            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout)
             if args.activity:
                 prep.prep_activity()
             else:

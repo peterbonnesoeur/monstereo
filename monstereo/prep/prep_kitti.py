@@ -17,7 +17,7 @@ import torch
 import cv2
 
 from ..utils import split_training, parse_ground_truth, get_iou_matches, append_cluster, factory_file, \
-    extract_stereo_matches, get_category, normalize_hwl, make_new_directory
+    extract_stereo_matches, get_category, normalize_hwl, make_new_directory, set_logger
 from ..network.process import preprocess_pifpaf, preprocess_monoloco
 from .transforms import flip_inputs, flip_labels, height_augmentation
 
@@ -47,12 +47,13 @@ class PreprocessKitti:
     dic_names = defaultdict(lambda: defaultdict(list))
     dic_std = defaultdict(lambda: defaultdict(list))
 
-    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False):
+    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0):
 
         self.vehicles = vehicles
         self.dir_ann = dir_ann
         self.iou_min = iou_min
         self.monocular = monocular
+        self.dropout = dropout
         #self.dir_gt = os.path.join('data', 'kitti', 'gt')
         self.dir_gt = os.path.join('data', 'kitti', 'training', "label_2")
         self.dir_images = 'data/kitti/training/image_2'
@@ -66,12 +67,27 @@ class PreprocessKitti:
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M")[2:]
         dir_out = os.path.join('data', 'arrays')
-        identifier = ''
+        identifier = '-'
         if self.vehicles:
             identifier+='vehicles-'
         
         if not self.monocular:
             identifier+="stereo-"
+
+
+        now = datetime.datetime.now()
+        now_time = now.strftime("%Y%m%d-%H%M-%S")[2:]
+        name_out = 'ms-' + now_time + identifier+"prep"+".txt"
+
+        try:
+            process_mode = os.environ["process_mode"]
+        except:
+            process_mode = "NULL"
+
+
+        self.logger = set_logger(os.path.join('data', 'logs', name_out))
+        self.logger.info("Preparation arguments: \nDir_ann: {} \nmonocular: {}"
+                         "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout))
 
         self.path_joints = os.path.join(dir_out, 'joints-kitti-' +identifier + now_time + '.json')
         self.path_names = os.path.join(dir_out, 'names-kitti-' +identifier + now_time + '.json')
@@ -88,6 +104,8 @@ class PreprocessKitti:
         cnt_stereo = cnt_mono.copy()
         correct_ped, correct_byc, wrong_ped, wrong_byc = 0, 0, 0, 0
         cnt_30, cnt_less_30 = 0, 0
+        length_keypoints = 0
+        occluded_keypoints=defaultdict(list)
 
         # self.names_gt = ('002282.txt',)
         for name in self.names_gt:
@@ -183,6 +201,8 @@ class PreprocessKitti:
 
                         # Preprocess MonoLoco++
                         if self.monocular:
+                            keypoint, length_keypoints, occ_kps = self.keypoints_dropout(keypoint)
+                            occluded_keypoints[phase].append(occ_kps)
                             inp = preprocess_monoloco(keypoint, kk).view(-1).tolist()
                             #print("INP", inp)
                             lab = normalize_hwl(lab)
@@ -252,6 +272,10 @@ class PreprocessKitti:
 
                                 for i, lab in enumerate(labels_aug):
                                     (kps, kps_r) = kps_aug[i]
+                                    kps, length_keypoints, occ_kps = self.keypoints_dropout(kps)
+                                    occluded_keypoints[phase].append(occ_kps)
+                                    kps_r, _, occ_kps = self.keypoints_dropout(kps_r)
+                                    occluded_keypoints[phase].append(occ_kps)
                                     input_l = preprocess_monoloco(kps, kk).view(-1)
                                     input_r = preprocess_monoloco(kps_r, kk).view(-1)
                                     keypoint = torch.cat((kps, kps_r), dim=2).tolist()
@@ -304,6 +328,7 @@ class PreprocessKitti:
             print("Ambiguous instances removed: {}".format(cnt_ambiguous))
             print("Extra pairs created with horizontal flipping: {}\n".format(cnt_extra_pair))
 
+
         if not self.monocular:
             print('Instances with stereo correspondence: {:.1f}% '.format(100 * cnt_pair / cnt_pair_tot))
             for phase in ['train', 'val']:
@@ -313,7 +338,45 @@ class PreprocessKitti:
 
         print("\nOutput files:\n{}\n{}".format(self.path_names, self.path_joints))
         print('-' * 120)
+
+        mean_val =   torch.mean(torch.Tensor(occluded_keypoints['val']))
+        mean_train = torch.mean(torch.Tensor(occluded_keypoints['train']))
+        std_val =    torch.std(torch.Tensor(occluded_keypoints['val']))
+        std_train=   torch.std(torch.Tensor(occluded_keypoints['train']))
+
+        self.logger.info("\nNumber of keypoints in the skeleton : {}\n"
+                          "Val: mean occluded keypoints {:.4}; STD {:.4}\n"
+                          "Train: mean occluded keypoints {:.4}; STD {:.4}\n".format(length_keypoints, mean_val, std_val, mean_train, std_train) )
+
+        self.logger.info('-' * 120)
+        self.logger.info("Number of GT files: {}. Files with at least one item: {}.  Files not found: {}"
+        .format(cnt_files, cnt_files_ped, cnt_fnf))
+        self.logger.info("Total annotations: {}".format(cnt_tot))
+
+        self.logger.info("\nOutput files:\n{}\n{}".format(self.path_names, self.path_joints))
+        self.logger.info('-' * 120)
+
         
+    def keypoints_dropout(self,keypoints, nb_dim =2):
+
+        length_keypoints = 0
+        occluded_kps = []
+        """if self.dropout <= 0.0:
+            return keypoints
+        else:"""
+        if isinstance(keypoints, list):
+            keypoints = torch.tensor(keypoints)
+
+        for i, _ in enumerate(keypoints):
+            length_keypoints = len(keypoints[i,nb_dim, :])
+            threshold = int(length_keypoints*(self.dropout))
+            for j in range(length_keypoints):
+                if (keypoints[i,nb_dim, :]>=0).sum() >= threshold and torch.rand(1)<self.dropout: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
+                    keypoints[i, 0:nb_dim, j] = torch.tensor([-3]*nb_dim)
+                    keypoints[i, nb_dim, j] = torch.tensor(0)
+            occluded_kps.append((keypoints[i,nb_dim, :]<=0).sum())
+        #print(occluded_kps)
+        return keypoints, length_keypoints, occluded_kps
 
     def prep_activity(self):
         """Augment ground-truth with flag activity"""

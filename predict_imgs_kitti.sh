@@ -22,6 +22,7 @@ i=0
 
 output_types='combined_3d'
 
+
 output_directory='visual_tests/val_kitti'
 
 
@@ -31,7 +32,6 @@ do
   echo "CUDA_VISIBLE_DEVICES=${cuda_device_to_use} python3 -m  monstereo.run predict /home/maximebonnesoeur/monstereo/data/kitti/training/image_2/$line.png --joints_folder ${dir_ann_car} --mode ${mode} --model ${model} --output_types ${output_types} --vehicles --path_gt ${path_gt} --draw_box --z_max 60 --output-directory ${output_directory} --show"
   #CUDA_VISIBLE_DEVICES=${cuda_device_to_use}  python3 -m openpifpaf.predict --checkpoint ~/openpifpaf_apollocar3d/outputs/shufflenetv2k16w-201009-153737-apollo.pkl.epoch300  /home/maximebonnesoeur/monstereo/data/kitti/training/image_2/$line.png --image-output ${output_directory} 
   #CUDA_VISIBLE_DEVICES=${cuda_device_to_use}  python3 -m openpifpaf.predict --checkpoint shufflenetv2k30 /home/maximebonnesoeur/monstereo/data/kitti/training/image_2/$line.png  --image-output ${output_directory} 
-
   echo "$line"
   if [[ "$i" == '100' ]]; then
     break
