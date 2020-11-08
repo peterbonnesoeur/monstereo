@@ -5,6 +5,8 @@ import os
 import numpy as np
 import torch
 import torchvision
+import torch
+import random
 
 from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles
 
@@ -114,9 +116,9 @@ def clear_keypoints(keypoints, nb_dim = 2):
         mean = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].mean(dim = 1).to(keypoints.device) 
         mean[mean != mean] = 0      # set Nan to 0
         if process_mode == 'neg':
-            mean =(torch.ones(mean.size())*(-1000)).to(keypoints.device) 
+            mean =(torch.ones(mean.size())*-1000).to(keypoints.device) 
         elif process_mode == 'zero':
-            mean =(torch.ones(mean.size())*(-1000)).to(keypoints.device) 
+            mean =(torch.ones(mean.size())*0).to(keypoints.device) 
         
         if process_mode =='zero' or process_mode == 'mean' or process_mode == 'neg':
             if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
@@ -450,3 +452,30 @@ def extract_outputs_mono(outputs, tasks=None):
 
     dic_out['yaw'] = (yaw_pred, yaw_orig)  # alpha, ry
     return dic_out
+
+
+def keypoints_dropout(keypoints, dropout = 0 ,nb_dim =2):
+
+    length_keypoints = 0
+    occluded_kps = []
+
+    if isinstance(keypoints, list):
+        keypoints = torch.tensor(keypoints)
+
+    for i, _ in enumerate(keypoints):
+        length_keypoints = len(keypoints[i,nb_dim, :])
+        threshold = int(length_keypoints*(dropout))
+
+        #print(length_keypoints, list(range(length_keypoints)))
+        #print())
+        kps_list = random.sample(list(range(length_keypoints)), length_keypoints)
+        #print("KEYPOINT_LIST", kps_list)
+        for j in kps_list:
+            val = torch.rand(1)
+            if val<dropout: #(keypoints[i,nb_dim, :]>0).sum() >= threshold and val<self.dropout: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
+                keypoints[i, 0:nb_dim, j] = torch.tensor([-3]*nb_dim)
+                keypoints[i, nb_dim, j] = torch.tensor(0)
+
+        #print("NUM OCCLUDED ", (keypoints[i,nb_dim, :]<=0).sum() )
+        occluded_kps.append((keypoints[i,nb_dim, :]<=0).sum())
+    return keypoints, length_keypoints, occluded_kps
