@@ -18,7 +18,7 @@ import cv2
 
 from ..utils import split_training, parse_ground_truth, get_iou_matches, append_cluster, factory_file, \
     extract_stereo_matches, get_category, normalize_hwl, make_new_directory, set_logger
-from ..network.process import preprocess_pifpaf, preprocess_monoloco
+from ..network.process import preprocess_pifpaf, preprocess_monoloco, keypoints_dropout
 from .transforms import flip_inputs, flip_labels, height_augmentation
 
 
@@ -76,7 +76,7 @@ class PreprocessKitti:
 
 
         now = datetime.datetime.now()
-        now_time = now.strftime("%Y%m%d-%H%M-%S")[2:]
+        now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
         name_out = 'ms-' + now_time + identifier+"prep"+".txt"
 
         try:
@@ -108,196 +108,211 @@ class PreprocessKitti:
         occluded_keypoints=defaultdict(list)
 
         # self.names_gt = ('002282.txt',)
-        for name in self.names_gt:
-            path_gt = os.path.join(self.dir_gt, name)
-            basename, _ = os.path.splitext(name)
-            path_im = os.path.join(self.dir_images, basename + '.png')
-            phase, flag = self._factory_phase(name)
-            if flag:
-                cnt_fnf += 1
-                continue
 
-            if phase == 'train':
-                min_conf = 0
-                category = 'all'
-            else:  # Remove for original results
-                min_conf = 0.1
-                
-                if self.vehicles:
-                    category = 'car'
-                else:
-                    category = 'pedestrian'
+        if self.dropout>0:
+            dropouts = [0, self.dropout]
+        else:
+            dropouts = [0]
 
-            # Extract ground truth
-            boxes_gt, ys, _, _ = parse_ground_truth(path_gt, category=category, spherical=True, vehicles=self.vehicles)
-            cnt_gt[phase] += len(boxes_gt)
-            cnt_files += 1
-            cnt_files_ped += min(len(boxes_gt), 1)  # if no boxes 0 else 1
-            # Extract keypoints
-            path_calib = os.path.join(self.dir_kk, basename + '.txt')
-            annotations, kk, tt = factory_file(path_calib, self.dir_ann, basename)
+        for dropout in dropouts:
+            
+            if len(dropouts)>=2:
+                self.logger.info("Generation of the inputs for a dropout of {}".format(dropout))
 
-            self.dic_names[basename + '.png']['boxes'] = copy.deepcopy(boxes_gt)
-            self.dic_names[basename + '.png']['ys'] = copy.deepcopy(ys)
-            self.dic_names[basename + '.png']['K'] = copy.deepcopy(kk)
+            for name in self.names_gt:
+                path_gt = os.path.join(self.dir_gt, name)
+                basename, _ = os.path.splitext(name)
+                path_im = os.path.join(self.dir_images, basename + '.png')
+                phase, flag = self._factory_phase(name)
+                if flag:
+                    cnt_fnf += 1
+                    continue
 
-            # Check image size
-            with Image.open(path_im) as im:
-                width, height = im.size
-
-            boxes, keypoints = preprocess_pifpaf(annotations, im_size=(width, height), min_conf=min_conf)
-            #print(keypoints)
-            if keypoints:
-                
-
-                #if not self.monocular:
-                annotations_r, kk_r, tt_r = factory_file(path_calib, self.dir_ann, basename, mode='right')
-                boxes_r, keypoints_r = preprocess_pifpaf(annotations_r, im_size=(width, height), min_conf=min_conf)
-                cat = get_category(keypoints, os.path.join(self.dir_byc_l, basename + '.json'))
+                if phase == 'train':
+                    min_conf = 0
+                    category = 'all'
+                else:  # Remove for original results
+                    min_conf = 0.1
                     
-                # else:
-                #    keypoints_r = None
-                
-                if not keypoints_r:  # Case of no detection
-                    all_boxes_gt, all_ys = [boxes_gt], [ys]
-                    boxes_r, keypoints_r = boxes[0:1].copy(), keypoints[0:1].copy()
-                    all_boxes, all_keypoints = [boxes], [keypoints]
-                    all_keypoints_r = [keypoints_r]
-                    
-                else:
-
-                    # Horizontal Flipping for training
-                    if phase == 'train':
-                        # GT)
-                        boxes_gt_flip, ys_flip = flip_labels(boxes_gt, ys, im_w=width)
-                        # New left
-                        boxes_flip = flip_inputs(boxes_r, im_w=width, mode='box', vehicles = self.vehicles)
-                        keypoints_flip = flip_inputs(keypoints_r, im_w=width, vehicles = self.vehicles)
-
-                        # New right
-                        keypoints_r_flip = flip_inputs(keypoints, im_w=width, vehicles = self.vehicles)
-
-                        # combine the 2 modes
-                        all_boxes_gt = [boxes_gt, boxes_gt_flip]
-                        all_ys = [ys, ys_flip]
-                        all_boxes = [boxes, boxes_flip]
-                        all_keypoints = [keypoints, keypoints_flip]
-                        all_keypoints_r = [keypoints_r, keypoints_r_flip]
-
+                    if self.vehicles:
+                        category = 'car'
                     else:
+                        category = 'pedestrian'
+
+                # Extract ground truth
+                boxes_gt, ys, _, _ = parse_ground_truth(path_gt, category=category, spherical=True, vehicles=self.vehicles)
+                cnt_gt[phase] += len(boxes_gt)
+                cnt_files += 1
+                cnt_files_ped += min(len(boxes_gt), 1)  # if no boxes 0 else 1
+                # Extract keypoints
+                path_calib = os.path.join(self.dir_kk, basename + '.txt')
+                annotations, kk, tt = factory_file(path_calib, self.dir_ann, basename)
+
+                if dropout == 0:
+                    self.dic_names[basename + '.png']['boxes'] = copy.deepcopy(boxes_gt)
+                    self.dic_names[basename + '.png']['ys'] = copy.deepcopy(ys)
+                    self.dic_names[basename + '.png']['K'] = copy.deepcopy(kk)
+
+                # Check image size
+                with Image.open(path_im) as im:
+                    width, height = im.size
+
+                #if cnt_files >20:
+                #    break
+
+                boxes, keypoints = preprocess_pifpaf(annotations, im_size=(width, height), min_conf=min_conf)
+                #print(keypoints)
+                if keypoints:
+                    
+
+                    #if not self.monocular:
+                    annotations_r, kk_r, tt_r = factory_file(path_calib, self.dir_ann, basename, mode='right')
+                    boxes_r, keypoints_r = preprocess_pifpaf(annotations_r, im_size=(width, height), min_conf=min_conf)
+                    cat = get_category(keypoints, os.path.join(self.dir_byc_l, basename + '.json'))
+                        
+                    # else:
+                    #    keypoints_r = None
+                    
+                    if not keypoints_r:  # Case of no detection
                         all_boxes_gt, all_ys = [boxes_gt], [ys]
+                        boxes_r, keypoints_r = boxes[0:1].copy(), keypoints[0:1].copy()
                         all_boxes, all_keypoints = [boxes], [keypoints]
                         all_keypoints_r = [keypoints_r]
+                        
+                    else:
 
-                # Match each set of keypoint with a ground truth
-                self.dic_jo[phase]['K'].append(kk)
-                for ii, boxes_gt in enumerate(all_boxes_gt):
-                    keypoints, keypoints_r = torch.tensor(all_keypoints[ii]), torch.tensor(all_keypoints_r[ii])
-                    ys = all_ys[ii]
-                    matches = get_iou_matches(all_boxes[ii], boxes_gt, self.iou_min)
-                    for (idx, idx_gt) in matches:
-                        keypoint = keypoints[idx:idx + 1]
-                        lab = ys[idx_gt][:-1]
+                        # Horizontal Flipping for training
+                        if phase == 'train':
+                            # GT)
+                            boxes_gt_flip, ys_flip = flip_labels(boxes_gt, ys, im_w=width)
+                            # New left
+                            boxes_flip = flip_inputs(boxes_r, im_w=width, mode='box', vehicles = self.vehicles)
+                            keypoints_flip = flip_inputs(keypoints_r, im_w=width, vehicles = self.vehicles)
 
-                        # Preprocess MonoLoco++
-                        if self.monocular:
-                            keypoint, length_keypoints, occ_kps = self.keypoints_dropout(keypoint)
-                            occluded_keypoints[phase].append(occ_kps)
-                            inp = preprocess_monoloco(keypoint, kk).view(-1).tolist()
-                            #print("INP", inp)
-                            lab = normalize_hwl(lab)
-                            if ys[idx_gt][10] < 0.5:
-                                self.dic_jo[phase]['kps'].append(keypoint.tolist())
-                                self.dic_jo[phase]['X'].append(inp)
-                                self.dic_jo[phase]['Y'].append(lab)
-                                self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
-                                append_cluster(self.dic_jo, phase, inp, lab, keypoint.tolist())
-                                cnt_mono[phase] += 1
-                                cnt_tot += 1
+                            # New right
+                            keypoints_r_flip = flip_inputs(keypoints, im_w=width, vehicles = self.vehicles)
 
-                        # Preprocess MonStereo
+                            # combine the 2 modes
+                            all_boxes_gt = [boxes_gt, boxes_gt_flip]
+                            all_ys = [ys, ys_flip]
+                            all_boxes = [boxes, boxes_flip]
+                            all_keypoints = [keypoints, keypoints_flip]
+                            all_keypoints_r = [keypoints_r, keypoints_r_flip]
+
                         else:
-                            zz = ys[idx_gt][2]
-                            stereo_matches, cnt_amb = extract_stereo_matches(keypoint, keypoints_r, zz,
-                                                                             phase=phase, seed=cnt_pair_tot)
-                            cnt_match_l += 1 if ii < 0.1 else 0  # matched instances
-                            cnt_match_r += 1 if ii > 0.9 else 0
-                            cnt_ambiguous += cnt_amb
+                            all_boxes_gt, all_ys = [boxes_gt], [ys]
+                            all_boxes, all_keypoints = [boxes], [keypoints]
+                            all_keypoints_r = [keypoints_r]
 
-                            # Monitor precision of classes
-                            if phase == 'val':
-                                if ys[idx_gt][10] == cat[idx] == 1:
-                                    correct_byc += 1
-                                elif ys[idx_gt][10] == cat[idx] == 0:
-                                    correct_ped += 1
-                                elif ys[idx_gt][10] != cat[idx] and ys[idx_gt][10] == 1:
-                                    wrong_byc += 1
-                                elif ys[idx_gt][10] != cat[idx] and ys[idx_gt][10] == 0:
-                                    wrong_ped += 1
+                    # Match each set of keypoint with a ground truth
+                    self.dic_jo[phase]['K'].append(kk)
+                    for ii, boxes_gt in enumerate(all_boxes_gt):
+                        keypoints, keypoints_r = torch.tensor(all_keypoints[ii]), torch.tensor(all_keypoints_r[ii])
+                        ys = all_ys[ii]
+                        matches = get_iou_matches(all_boxes[ii], boxes_gt, self.iou_min)
+                        for (idx, idx_gt) in matches:
+                            keypoint = keypoints[idx:idx + 1]
+                            lab = ys[idx_gt][:-1]
 
-                            cnt_cyclist += 1 if ys[idx_gt][10] == 1 else 0
+                            # Preprocess MonoLoco++
+                            if self.monocular:
+                                keypoint, length_keypoints, occ_kps = keypoints_dropout(keypoint, dropout)
+                                occluded_keypoints[phase].append(occ_kps)
+                                inp = preprocess_monoloco(keypoint, kk).view(-1).tolist()
+                                #print("INP", inp)
+                                lab = normalize_hwl(lab)
+                                if ys[idx_gt][10] < 0.5:
+                                    self.dic_jo[phase]['kps'].append(keypoint.tolist())
+                                    self.dic_jo[phase]['X'].append(inp)
+                                    self.dic_jo[phase]['Y'].append(lab)
+                                    self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
+                                    append_cluster(self.dic_jo, phase, inp, lab, keypoint.tolist())
+                                    cnt_mono[phase] += 1
+                                    cnt_tot += 1
 
-                            for num, (idx_r, s_match) in enumerate(stereo_matches):
-                                label = ys[idx_gt][:-1] + [s_match]
-                                if s_match > 0.9:
-                                    cnt_pair += 1
+                            # Preprocess MonStereo
+                            else:
+                                zz = ys[idx_gt][2]
+                                stereo_matches, cnt_amb = extract_stereo_matches(keypoint, keypoints_r, zz,
+                                                                                phase=phase, seed=cnt_pair_tot)
+                                cnt_match_l += 1 if ii < 0.1 else 0  # matched instances
+                                cnt_match_r += 1 if ii > 0.9 else 0
+                                cnt_ambiguous += cnt_amb
 
-                                # Remove noise of very far instances for validation
-                                # if (phase == 'val') and (ys[idx_gt][3] >= 50):
-                                #     continue
+                                # Monitor precision of classes
+                                if phase == 'val':
+                                    if ys[idx_gt][10] == cat[idx] == 1:
+                                        correct_byc += 1
+                                    elif ys[idx_gt][10] == cat[idx] == 0:
+                                        correct_ped += 1
+                                    elif ys[idx_gt][10] != cat[idx] and ys[idx_gt][10] == 1:
+                                        wrong_byc += 1
+                                    elif ys[idx_gt][10] != cat[idx] and ys[idx_gt][10] == 0:
+                                        wrong_ped += 1
 
-                                #  ---> Save only positives unless there is no positive (keep positive flip and augm)
-                                # if num > 0 and s_match < 0.9:
-                                #     continue
+                                cnt_cyclist += 1 if ys[idx_gt][10] == 1 else 0
 
-                                # Height augmentation
-                                cnt_pair_tot += 1
-                                cnt_extra_pair += 1 if ii == 1 else 0
-                                flag_aug = False
-                                if phase == 'train' and 3 < label[2] < 30 and s_match > 0.9:
-                                    flag_aug = True
-                                elif phase == 'train' and 3 < label[2] < 30 and cnt_pair_tot % 2 == 0:
-                                    flag_aug = True
+                                for num, (idx_r, s_match) in enumerate(stereo_matches):
+                                    label = ys[idx_gt][:-1] + [s_match]
+                                    if s_match > 0.9:
+                                        cnt_pair += 1
 
-                                # Remove height augmentation
-                                # flag_aug = False
+                                    # Remove noise of very far instances for validation
+                                    # if (phase == 'val') and (ys[idx_gt][3] >= 50):
+                                    #     continue
 
-                                if flag_aug:
-                                    kps_aug, labels_aug = height_augmentation(
-                                        keypoints[idx:idx+1], keypoints_r[idx_r:idx_r+1], label, s_match,
-                                        seed=cnt_pair_tot)
-                                else:
-                                    kps_aug = [(keypoints[idx:idx+1], keypoints_r[idx_r:idx_r+1])]
-                                    labels_aug = [label]
+                                    #  ---> Save only positives unless there is no positive (keep positive flip and augm)
+                                    # if num > 0 and s_match < 0.9:
+                                    #     continue
 
-                                for i, lab in enumerate(labels_aug):
-                                    (kps, kps_r) = kps_aug[i]
-                                    kps, length_keypoints, occ_kps = self.keypoints_dropout(kps)
-                                    occluded_keypoints[phase].append(occ_kps)
-                                    kps_r, _, occ_kps = self.keypoints_dropout(kps_r)
-                                    occluded_keypoints[phase].append(occ_kps)
-                                    input_l = preprocess_monoloco(kps, kk).view(-1)
-                                    input_r = preprocess_monoloco(kps_r, kk).view(-1)
-                                    keypoint = torch.cat((kps, kps_r), dim=2).tolist()
-                                    inp = torch.cat((input_l, input_l - input_r)).tolist()
+                                    # Height augmentation
+                                    cnt_pair_tot += 1
+                                    cnt_extra_pair += 1 if ii == 1 else 0
+                                    flag_aug = False
+                                    if phase == 'train' and 3 < label[2] < 30 and s_match > 0.9:
+                                        flag_aug = True
+                                    elif phase == 'train' and 3 < label[2] < 30 and cnt_pair_tot % 2 == 0:
+                                        flag_aug = True
 
-                                    # Only relative distances
-                                    # inp_x = input[::2]
-                                    # inp = torch.cat((inp_x, input - input_r)).tolist()
+                                    # Remove height augmentation
+                                    # flag_aug = False
 
-                                    lab = normalize_hwl(lab)
-                                    if ys[idx_gt][10] < 0.5:
-                                        self.dic_jo[phase]['kps'].append(keypoint)
-                                        self.dic_jo[phase]['X'].append(inp)
-                                        self.dic_jo[phase]['Y'].append(lab)
-                                        self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
-                                        append_cluster(self.dic_jo, phase, inp, lab, keypoint)
-                                        cnt_tot += 1
-                                        if s_match > 0.9:
-                                            cnt_stereo[phase] += 1
-                                        else:
-                                            cnt_mono[phase] += 1
-            sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_files) + '\t')
+                                    if flag_aug:
+                                        kps_aug, labels_aug = height_augmentation(
+                                            keypoints[idx:idx+1], keypoints_r[idx_r:idx_r+1], label, s_match,
+                                            seed=cnt_pair_tot)
+                                    else:
+                                        kps_aug = [(keypoints[idx:idx+1], keypoints_r[idx_r:idx_r+1])]
+                                        labels_aug = [label]
+
+                                    for i, lab in enumerate(labels_aug):
+                                        (kps, kps_r) = kps_aug[i]
+                                        kps, length_keypoints, occ_kps = self.keypoints_dropout(kps, dropout)
+                                        occluded_keypoints[phase].append(occ_kps)
+                                        kps_r, _, occ_kps = self.keypoints_dropout(kps_r, dropout)
+                                        occluded_keypoints[phase].append(occ_kps)
+                                        input_l = preprocess_monoloco(kps, kk).view(-1)
+                                        input_r = preprocess_monoloco(kps_r, kk).view(-1)
+                                        keypoint = torch.cat((kps, kps_r), dim=2).tolist()
+                                        inp = torch.cat((input_l, input_l - input_r)).tolist()
+
+                                        # Only relative distances
+                                        # inp_x = input[::2]
+                                        # inp = torch.cat((inp_x, input - input_r)).tolist()
+
+                                        lab = normalize_hwl(lab)
+                                        if ys[idx_gt][10] < 0.5:
+                                            self.dic_jo[phase]['kps'].append(keypoint)
+                                            self.dic_jo[phase]['X'].append(inp)
+                                            self.dic_jo[phase]['Y'].append(lab)
+                                            self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
+                                            append_cluster(self.dic_jo, phase, inp, lab, keypoint)
+                                            cnt_tot += 1
+                                            if s_match > 0.9:
+                                                cnt_stereo[phase] += 1
+                                            else:
+                                                cnt_mono[phase] += 1
+                sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_files) + '\t')
 
         with open(self.path_joints, 'w') as file:
             json.dump(self.dic_jo, file)
@@ -357,26 +372,7 @@ class PreprocessKitti:
         self.logger.info('-' * 120)
 
         
-    def keypoints_dropout(self,keypoints, nb_dim =2):
 
-        length_keypoints = 0
-        occluded_kps = []
-        """if self.dropout <= 0.0:
-            return keypoints
-        else:"""
-        if isinstance(keypoints, list):
-            keypoints = torch.tensor(keypoints)
-
-        for i, _ in enumerate(keypoints):
-            length_keypoints = len(keypoints[i,nb_dim, :])
-            threshold = int(length_keypoints*(self.dropout))
-            for j in range(length_keypoints):
-                if (keypoints[i,nb_dim, :]>=0).sum() >= threshold and torch.rand(1)<self.dropout: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-                    keypoints[i, 0:nb_dim, j] = torch.tensor([-3]*nb_dim)
-                    keypoints[i, nb_dim, j] = torch.tensor(0)
-            occluded_kps.append((keypoints[i,nb_dim, :]<=0).sum())
-        #print(occluded_kps)
-        return keypoints, length_keypoints, occluded_kps
 
     def prep_activity(self):
         """Augment ground-truth with flag activity"""
