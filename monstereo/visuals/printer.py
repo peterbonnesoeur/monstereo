@@ -114,7 +114,6 @@ class Printer:
 
             fig, (ax0s, ax1s) = plt.subplots(2, 2, sharey=False, gridspec_kw={'width_ratios': [2.4, 1.7]},
                                            figsize=(fig_width, fig_height))
-            print("HERE", len(ax0s))
             ax0, ax1 = ax0s
             ax2, ax3 = ax1s
             ax3.remove()
@@ -209,12 +208,7 @@ class Printer:
                 #keypoints.append(np.reshape(pifpaf_o['keypoints'], (3,-1)))
                 length = len(pifpaf_o['keypoints'])/3
                 x = pifpaf_o['keypoints'][0::3]
-                """print(x)
-                print(x>0)
-                x = x[x>0]"""
                 y = pifpaf_o['keypoints'][1::3] 
-                """y = y[y>0]
-                print("X", x, y)"""
                 keypoints.append([x,y])
         # Process the annotation dictionary of monoloco
         self._process_results(dic_out)
@@ -232,7 +226,7 @@ class Printer:
             if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d']) and self.zz_pred[idx] > 0:
 
                 color = self.cmap((self.zz_pred[idx] % self.z_max) / self.z_max)
-                color = 'red'
+                #color = 'red'
                 self.draw_circle(axes, self.uv_shoulders[idx], color)
                 if draw_box:
                     self.draw_boxes(axes, idx, color)
@@ -255,13 +249,19 @@ class Printer:
                     num += 1
         # Add the legend
 
-        
-        if any(xx in self.output_types for xx in ['combined_3d']):
-            for idx in iterator:
-                self.draw_keypoints(axes, keypoints[idx], idx)
+        previous_idx = []
+        for idx in iterator:
+            if any(xx in self.output_types for xx in ['combined_3d']):
+                #self.draw_keypoints(axes, keypoints[idx], idx)
+                previous_idx.append(idx)
                 self.draw_3d_visu(axes, idx)
 
-
+        for idx, keypoint in enumerate(keypoints):
+            if any(xx in self.output_types for xx in ['combined_3d']):
+                    self.draw_keypoints(axes, keypoint, idx)
+                    if idx not in previous_idx:
+                        self.draw_3d_visu(axes, idx, color = 'red')
+                        self.draw_missing_pos(axes, idx)
         if legend:
             draw_legend(axes)
             
@@ -275,15 +275,14 @@ class Printer:
             plt.close(fig)
 
     def draw_keypoints(self, axes, keypoints, idx):
-        indexes = np.array(keypoints[1])>0
         axes[2].scatter(keypoints[0], np.array(keypoints[1])*self.y_scale)
 
-    def draw_3d_visu(self, axes, idx):
+    def draw_3d_visu(self, axes, idx, color = 'grey'):
         import json
         if len(self.car_models) !=0:
             car_model = self.car_models[idx]
         else:
-            car_model = 'data/apolloscape/train/car_models_json/019-SUV.json'
+            car_model = 'docs/car_model.json'
         with open(car_model) as json_file:
             data = json.load(json_file)
         vertices = np.array(data['vertices'])
@@ -291,7 +290,8 @@ class Printer:
 
         x,y,z = self.pos_pred[idx]
         T = np.float32([0.0, self.angles[idx] ,0.0 ,x,y,z])
-        T = np.float32([0.0, self.angles[idx] , 0.0 ,x,y,z])
+        if 'kitti' in self.output_path:
+            T = np.float32([0.0, self.angles[idx] + np.pi/2 , 0.0 ,x,y,z])
         scale = np.float32([1, 1, 1])
 
         vertices_r = project(T, scale, vertices )
@@ -302,7 +302,7 @@ class Printer:
         axes[3].set_xlabel("X")
         axes[3].set_ylabel("Y")
         axes[3].set_zlabel("Z")
-        axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color='grey')
+        axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
 
 
 
@@ -344,6 +344,10 @@ class Printer:
             if self.gt[idx]:
                 axes[1].plot(self.xx_gt[idx], self.zz_gt[idx],
                              color='k', label="Ground-truth", markersize=8, marker='x')
+
+    def draw_missing_pos(self,axes, idx):
+        axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction", markersize=5,
+                    marker='o')
 
     def draw_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""
@@ -392,8 +396,8 @@ class Printer:
         std = self.stds_epi[idx] if self.stds_epi[idx] > 0 else self.stds_ale[idx]
         theta = math.atan2(self.zz_pred[idx], self.xx_pred[idx])
 
-        delta_x = std * math.cos(theta)
-        delta_z = std * math.sin(theta)
+        delta_x = 0#std * math.cos(theta)
+        delta_z = 0#std * math.sin(theta)
 
         axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z,
                      str(num), fontsize=self.FONTSIZE_BV, color='darkorange')

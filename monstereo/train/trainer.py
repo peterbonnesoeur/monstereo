@@ -30,7 +30,7 @@ from ..utils import set_logger, threshold_loose, threshold_mean, threshold_stric
 
 class Trainer:
     # Constants
-    VAL_BS = 14000
+    VAL_BS = 26000
 
     tasks = ('d', 'x', 'y', 'h', 'w', 'l', 'ori', 'aux')
     val_task = 'd'
@@ -87,6 +87,9 @@ class Trainer:
         if  "originals" in joints:
             self.identifier+="-originals"
 
+        if dataset == 'apolloscape':
+            self.identifier+='-apolloscape'
+
         self.identifier+="-"+dataset
         # Select the device
         use_cuda = torch.cuda.is_available()
@@ -133,7 +136,7 @@ class Trainer:
 
         print("input size : ",input_size, "\noutput size : ", output_size )
         now = datetime.datetime.now()
-        now_time = now.strftime("%Y%m%d-%H%M")[2:]
+        now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
         name_out = 'ms-' + now_time + self.identifier 
 
         try:
@@ -429,9 +432,9 @@ class Trainer:
     def logger_apolloscape(self, clst, dic_err):
         
         self.logger.info("Apolloscape evaluation, for cluster : {} val set: \n"
-                   "Threshold loose : distance abs ; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
-                    "Threshold strict : distance abs; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
-                    "Threshold mean : distance abs ; {:.2f} %, distance rel ; {:.2f} %, angle : {:.2f}, \n"
+                   "Threshold loose : distance_abs: {:.2f} %, distance_rel: {:.2f} %, angle: {:.2f} \n"
+                    "Threshold strict : distance_abs: {:.2f} %, distance_rel: {:.2f} %, angle: {:.2f} \n"
+                    "Threshold mean : distance_abs: {:.2f} %, distance_rel: {:.2f} %, angle: {:.2f} \n"
                     .format(clst,
                             dic_err[clst]['threshold_loose_abs'][0]*100, dic_err[clst]['threshold_loose_rel'][0]*100,  dic_err[clst]['threshold_loose_ang'][0], 
                             dic_err[clst]['threshold_strict_abs'][0]*100,  dic_err[clst]['threshold_strict_rel'][0]*100,  dic_err[clst]['threshold_strict_ang'][0],
@@ -543,23 +546,6 @@ def show_box_plot(dic_errors, clusters, show=False, save=False, vehicles = False
     plt.rcParams.update({'font.size': 22})
     ax.set_xticklabels(labels,
                     rotation=0)
-    """
-    print([clst for clst in clusters[:-1]])
-    print(dic_errors)
-    df = pd.DataFrame([dic_errors[str(clst)].item() for clst in clusters[:-1]]).T
-    df.columns = labels
-
-    print(labels)
-    print(df.head())
-    df.to_csv(r'dataframe.csv')
-    df = df.dropna()
-    plt.figure()
-    _ = df.boxplot()
-    
-    plt.title(name)
-    plt.ylabel('Average localization error (ALE) [m]')
-    plt.xlabel('Ground-truth distance [m]')
-    plt.ylim(y_min, y_max)"""
 
 
     if save:

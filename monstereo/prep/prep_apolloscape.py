@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from ..utils import correct_angle, normalize_hwl, pixel_to_camera, to_spherical #,append_cluster
 
-from ..network.process import preprocess_monoloco
+from ..network.process import preprocess_monoloco, keypoints_dropout
 
-from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model
+from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, set_logger
 
 
 
@@ -62,28 +62,6 @@ def append_cluster(dic_jo, phase, xx, ys, kps):
             dic_jo[phase]['clst'][clst]['X'].append(xx)
             dic_jo[phase]['clst'][clst]['Y'].append(ys)
 
-    #print(dic_jo[phase]['clst'].keys())
-    """if ys[3] <= 10:
-        dic_jo[phase]['clst']['10']['kps'].append(kps)
-        dic_jo[phase]['clst']['10']['X'].append(xx)
-        dic_jo[phase]['clst']['10']['Y'].append(ys)
-    elif ys[3] <= 20:
-        dic_jo[phase]['clst']['20']['kps'].append(kps)
-        dic_jo[phase]['clst']['20']['X'].append(xx)
-        dic_jo[phase]['clst']['20']['Y'].append(ys)
-    elif ys[3] <= 30:
-        dic_jo[phase]['clst']['30']['kps'].append(kps)
-        dic_jo[phase]['clst']['30']['X'].append(xx)
-        dic_jo[phase]['clst']['30']['Y'].append(ys)
-    elif ys[3] < 50:
-        dic_jo[phase]['clst']['50']['kps'].append(kps)
-        dic_jo[phase]['clst']['50']['X'].append(xx)
-        dic_jo[phase]['clst']['50']['Y'].append(ys)
-    else:
-        dic_jo[phase]['clst']['>50']['kps'].append(kps)
-        dic_jo[phase]['clst']['>50']['X'].append(xx)
-        dic_jo[phase]['clst']['>50']['Y'].append(ys)"""
-
 
 
 
@@ -100,13 +78,19 @@ class PreprocessApolloscape:
                           }
     dic_names = defaultdict(lambda: defaultdict(list))
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20, radius=200):
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20, radius=200, dropout = 0):
 
         logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
+        #self.logger = logging.getLogger(__name__)
 
         self.buffer = buffer
         self.radius = radius
+
+        self.dropout =dropout
         
         self.kps_3d = kps_3d
         
@@ -120,7 +104,23 @@ class PreprocessApolloscape:
         assert os.path.exists(dir_out), "Joints directory does not exists"
 
         now = datetime.datetime.now()
-        now_time = now.strftime("%Y%m%d-%H%M")[2:]
+        now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
+
+
+        try:
+            process_mode = os.environ["process_mode"]
+        except:
+            process_mode = "NULL"
+
+        identifier = '-apolloscape'
+
+        name_out = 'ms-' + now_time + identifier+"-prep"+".txt"
+
+        self.logger = set_logger(os.path.join('data', 'logs', name_out))
+        self.logger.info("Preparation arguments: \nDir_ann: {} "
+                         "\nprocess_mode : {} \nDropout images: {}".format(dir_ann, process_mode, dropout))
+
+
         self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + '-' + now_time + '.json')
         self.path_names = os.path.join(dir_out, 'names-apolloscape-' + dataset + '-' + now_time + '.json')
 
@@ -128,73 +128,88 @@ class PreprocessApolloscape:
         self.path  = os.path.join(dir_apollo, dataset)
         self.scenes, self.train_scenes, self.validation_scenes = factory(dataset, dir_apollo)
 
+
+
+        
     def run(self):
         """
         Prepare arrays for training
         """
         cnt_scenes  = cnt_ann = 0
         start = time.time()
+
+        occluded_keypoints=defaultdict(list)
         
-        for ii, scene in enumerate(self.scenes):
-            
-            if ii ==-100:
-                print("val_scenes",self.validation_scenes)
+        if self.dropout>0:
+            dropouts = [0, self.dropout]
+        else:
+            dropouts = [0]
 
-            if ii==(-100):
-                print("BREAK")
-                break
+        for dropout in dropouts:
+            
+            if len(dropouts)>=2:
+                self.logger.info("Generation of the inputs for a dropout of {}".format(dropout))
 
-            cnt_scenes +=1 
-            
-            scene_id = scene.split("/")[-1].split(".")[0]
-            camera_id = scene_id.split("_")[-1]
-            car_poses = os.path.join(self.path, "car_poses", scene_id + ".json")
-            
-            #print(scene_id, self.train_scenes[:5])
-            if scene_id+".jpg" in self.train_scenes:
-                phase = 'train'
-            elif scene_id+".jpg" in self.validation_scenes:
-                phase ='val'
-            else:    
-                print("phase name not in training or validation split")
-                continue
+            for ii, scene in enumerate(self.scenes):
                 
-            kk = K["Camera_"+camera_id]#intrinsic_vec_to_mat( K["Camera_"+camera_id])
-            
-            path_im = scene
-            
-            # Run IoU with pifpaf detections and save
-            path_pif = os.path.join(self.dir_ann, scene_id+".jpg" + '.predictions.json')
-                        
-            if os.path.isfile(path_pif) and True:
-                boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
+                if ii ==-100:
+                    print("val_scenes",self.validation_scenes)
 
-   
-            self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
-            self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list)
-            self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
-            self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
+                if ii==(-100):
+                    print("BREAK")
+                    break
 
-            
-            for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
+                cnt_scenes +=1 
                 
-                kps = [kps.transpose().tolist()]
-                #kk = list(intrinsic_vec_to_mat(kk).transpose())
+                scene_id = scene.split("/")[-1].split(".")[0]
+                camera_id = scene_id.split("_")[-1]
+                car_poses = os.path.join(self.path, "car_poses", scene_id + ".json")
                 
-                self.dic_jo[phase]['kps'].append(kps)
-                inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d).view(-1).tolist()
+                #print(scene_id, self.train_scenes[:5])
+                if scene_id+".jpg" in self.train_scenes:
+                    phase = 'train'
+                elif scene_id+".jpg" in self.validation_scenes:
+                    phase ='val'
+                else:    
+                    print("phase name not in training or validation split")
+                    continue
+                    
+                kk = K["Camera_"+camera_id]#intrinsic_vec_to_mat( K["Camera_"+camera_id])
                 
-                #print("inp 2.0 \n", inp)
-                self.dic_jo[phase]['X'].append(inp)
-                self.dic_jo[phase]['Y'].append(list(ys))
-                self.dic_jo[phase]['names'].append(scene_id+".jpg")  # One image name for each annotation
-                self.dic_jo[phase]['boxes_3d'].append(list(boxes_3d))
-                self.dic_jo[phase]['K'].append(intrinsic_vec_to_mat(kk).tolist())
+                path_im = scene
                 
-                append_cluster(self.dic_jo, phase, list(inp), list(ys), kps)
-                cnt_ann += 1
-                sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_ann) + '\t')
+                # Run IoU with pifpaf detections and save
+                path_pif = os.path.join(self.dir_ann, scene_id+".jpg" + '.predictions.json')
+                            
+                if os.path.isfile(path_pif) and True:
+                    boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
 
+    
+                self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
+                self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list)
+                self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
+                self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
+
+                
+                for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
+                    
+                    kps = [kps.transpose().tolist()]                    
+                    
+
+                    kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout)
+                    occluded_keypoints[phase].append(occ_kps)
+                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d).view(-1).tolist()
+                    
+                    self.dic_jo[phase]['kps'].append(kps.tolist())
+                    self.dic_jo[phase]['X'].append(list(inp))
+                    self.dic_jo[phase]['Y'].append(list(ys))
+                    self.dic_jo[phase]['names'].append(scene_id+".jpg")  # One image name for each annotation
+                    self.dic_jo[phase]['boxes_3d'].append(list(boxes_3d))
+                    self.dic_jo[phase]['K'].append(intrinsic_vec_to_mat(kk).tolist())
+                    
+                    append_cluster(self.dic_jo, phase, list(inp), list(ys), kps.tolist())
+                    cnt_ann += 1
+                    sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_ann) + '\t')
         with open(os.path.join(self.path_joints), 'w') as f:
             json.dump(self.dic_jo, f)
         with open(os.path.join(self.path_names), 'w') as f:
@@ -204,7 +219,18 @@ class PreprocessApolloscape:
         extract_box_average(self.dic_jo['train']['boxes_3d'])
         print("\nSaved {} annotations for {} scenes. Total time: {:.1f} minutes".format(cnt_ann, cnt_scenes, (end-start)/60))
         print("\nOutput files:\n{}\n{}\n".format(self.path_names, self.path_joints))    
-          
+
+
+        mean_val =   torch.mean(torch.Tensor(occluded_keypoints['val']))
+        mean_train = torch.mean(torch.Tensor(occluded_keypoints['train']))
+        std_val =    torch.std(torch.Tensor(occluded_keypoints['val']))
+        std_train=   torch.std(torch.Tensor(occluded_keypoints['train']))
+
+        self.logger.info("\nNumber of keypoints in the skeleton : {}\n"
+                          "Val: mean occluded keypoints {:.4}; STD {:.4}\n"
+                          "Train: mean occluded keypoints {:.4}; STD {:.4}\n".format(length_keypoints, mean_val, std_val, mean_train, std_train) )
+        self.logger.info("\nOutput files:\n{}\n{}".format(self.path_names, self.path_joints))
+        self.logger.info('-' * 120)
                  
     def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):
         with open(car_poses) as json_file:

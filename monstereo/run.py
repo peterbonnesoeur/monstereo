@@ -140,11 +140,11 @@ def main():
             prep.run()
         elif 'apolloscape' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
-            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer, radius = args.radius, kps_3d = args.full_position)
+            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer, radius = args.radius, kps_3d = args.full_position, dropout = args.dropout)
             prep.run()
         elif 'apolloscape_mini' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
-            prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer, radius = args.radius, kps_3d = args.full_position)
+            prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer, radius = args.radius, kps_3d = args.full_position, dropout = args.dropout)
             prep.run()
         else:
             from .prep.prep_kitti import PreprocessKitti
@@ -203,7 +203,7 @@ def main():
 
             if args.dataset == 'kitti':
                 from .eval import EvalKitti
-                kitti_eval = EvalKitti(verbose=args.verbose, vehicles = args.vehicles)
+                kitti_eval = EvalKitti(verbose=args.verbose, vehicles = args.vehicles, dir_ann=args.dir_ann)
                 kitti_eval.run()
                 kitti_eval.printer(show=args.show, save=args.save)
 

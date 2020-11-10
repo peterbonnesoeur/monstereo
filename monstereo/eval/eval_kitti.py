@@ -32,7 +32,7 @@ class EvalKitti:
     CATEGORIES = ('pedestrian',)
 
     def __init__(self, thresh_iou_monoloco=0.3, thresh_iou_base=0.3, thresh_conf_monoloco=0.2, thresh_conf_base=0.5,
-                 verbose=False, vehicles = False):
+                 verbose=False, vehicles = False, dir_ann = None):
 
         self.main_dir = os.path.join('data', 'kitti')
 
@@ -49,7 +49,7 @@ class EvalKitti:
             self.identifier+='_human'
 
         now = datetime.datetime.now()
-        now_time = now.strftime("%Y%m%d-%H%M")[2:]
+        now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
         name_out = 'ms-' + now_time+'-'+"eval"+".txt"
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
 
@@ -81,6 +81,7 @@ class EvalKitti:
         self.dic_thresh_conf['e2e-pl'] = -100  # They don't have enough detections
         self.dic_thresh_conf['oc-stereo'] = -100
 
+        self.logger.info("datast used for the evaluation: {}".format(dir_ann))
         # Extract validation images for evaluation
         names_gt = tuple(os.listdir(self.dir_gt))
         _, self.set_val = split_training(names_gt, path_train, path_val)
@@ -149,7 +150,7 @@ class EvalKitti:
             # Show statistics
             print('\n' + self.category.upper() + ':')
             self.logger.info('\n' + self.category.upper() + ':')
-            self.show_statistics()
+            #self.show_statistics()
             self.show_statistics_logger()
 
     def printer(self, show, save):
@@ -506,10 +507,10 @@ def add_true_negatives(err, cnt_gt):
     err['matched'] = 100 * matched / cnt_gt
 
 
-def find_cluster(dd, clusters):
+def find_cluster(dd, clusters): #! Outdated function. Does not work with the current value inputed. PLS do not consider. 
     """Find the correct cluster. Above the last cluster goes into "excluded (together with the ones from kitti cat"""
 
-    for idx, clst in enumerate(clusters[:-1]):
+    for idx, clst in enumerate(clusters[:-1]):  #easy, moderate, hard
         if int(clst) < dd <= int(clusters[idx+1]):
             return clst
     return 'excluded'
