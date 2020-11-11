@@ -18,4 +18,5 @@ docs/
 *.sh
 *.run
 *.csv
-excel_makel_kitti.py
+.ipynb_checkpoints/
+.vscode/
