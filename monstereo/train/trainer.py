@@ -38,7 +38,8 @@ class Trainer:
 
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
-                 monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti'):
+                 monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
+                 confidence = False):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -73,6 +74,8 @@ class Trainer:
         self.n_samples = n_samples
         self.r_seed = r_seed
         self.auto_tune_mtl = False
+
+        self.confidence = confidence
 
         self.identifier = '' #Used to differentiate the training models
         if self.vehicles:
@@ -116,22 +119,36 @@ class Trainer:
 
             if self.vehicles :
                 input_size = 24*2*2
+
+                if self.confidence:
+                    input_size = 24*3*2
+
                 if self.kps_3d:
                     output_size = 24
                 else:
                     output_size = 10
             else:
                 input_size = 68
+                if self.confidence:
+                    input_size = 17*3*2
                 output_size = 10
         else:
             if self.vehicles :
                 input_size = 24*2
+
+                if self.confidence:
+                    input_size = 24*3
+
                 if self.kps_3d:
                     output_size = 24
                 else:
                     output_size = 9
             else:
                 input_size = 34
+                
+                if self.confidence:
+                    input_size = 17*3
+
                 output_size = 9
 
         print("input size : ",input_size, "\noutput size : ", output_size )
@@ -155,9 +172,9 @@ class Trainer:
             self.logger.info("Training arguments: \nepochs: {} \nbatch_size: {} \ndropout: {}"
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
-                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {} \nprocess_mode: {} \ndropout_images: {}  "
+                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {} \nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} "
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
-                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d, process_mode, dropout_images))
+                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d, process_mode, dropout_images, self.confidence))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)

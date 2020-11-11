@@ -30,7 +30,11 @@ joints_mono_car='data/arrays/joints-kitti-vehicles-201028-1054.json'
 
 dir_ann_car="$2"
 
-dataset='kitti'
+dataset="$4"
+
+dir_ann_eval="$5"
+
+args="$6"
 
 #Test apolloscape
 
@@ -90,9 +94,9 @@ if [ $use_car == "1" ]
     then
 
         echo "Command joints mono processing"
-        echo "python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --monocular --vehicles --dataset ${dataset} --dropout $dropout"
+        echo "python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --monocular --vehicles --dataset ${dataset} --dropout ${dropout} ${args}"
 
-        output=$(python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --monocular --vehicles --dataset ${dataset} --dropout ${dropout})
+        output=$(python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --monocular --vehicles --dataset ${dataset} --dropout ${dropout} ${args})
         joints_out "$output"
         joints_mono_car="$joints"
     fi
@@ -105,11 +109,11 @@ if [ $use_car == "1" ]
     if [ $hyp == "1" ]
     then 
         echo "Hyper pyrameter optimization enabled with multiplier of ${multipler}"
-        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler}"
-        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler})
+        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler} ${args}"
+        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler} ${args})
     else
-        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save"
-        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save)
+        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save ${args}"
+        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_mono_car} --hidden_size ${hidden_size} --monocular --vehicles --dataset ${dataset} --save ${args})
     fi
     model_out "$output"
     model_mono="$model"
@@ -127,9 +131,9 @@ if [ $use_car == "1" ]
         then
 
             echo "Command joints stereo processing"
-            echo "${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --vehicles --dataset ${dataset} --dropout $dropout"
+            echo "${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --vehicles --dataset ${dataset} --dropout $dropout ${args}"
 
-            output=$(${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --vehicles --dataset ${dataset} --dropout $dropout)
+            output=$(${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann_car} --vehicles --dataset ${dataset} --dropout $dropout ${args})
             joints_out "$output"
             joints_stereo_car="$joints"
         fi
@@ -142,11 +146,11 @@ if [ $use_car == "1" ]
         if [ $hyp == "1" ]
         then
             echo "Hyper pyrameter optimization enabled with multiplier of ${multipler}"
-            echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler}"
-            output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler})
+            echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler} ${args}"
+            output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save --hyp --multiplier ${multipler} ${args})
         else
-            echo "${command_izar} python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save"
-            output=$(${command_izar} python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save)
+            echo "${command_izar} python3 -m  monstereo.run train --epochs ${epochs} --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save ${args}"
+            output=$(${command_izar} python3 -m  monstereo.run train --epochs ${epochs}  --joints ${joints_stereo_car} --hidden_size ${hidden_size} --vehicles --dataset ${dataset} --save ${args})
         fi
 
         model_out "$output"
@@ -161,8 +165,8 @@ if [ $use_car == "1" ]
     if [ $dataset == "kitti" ]
     then
         echo "Generate and evaluate the output"
-        echo "${command_izar}  python3 -m monstereo.run eval --dir_ann ${dir_ann_car} --model ${model_stereo} --model_mono ${model_mono} --hidden_size ${hidden_size} --vehicles --generate ${eval_mode}"
-        ${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann_car} --model ${model_stereo} --model_mono ${model_mono} --hidden_size ${hidden_size} --vehicles --generate ${eval_mode}
+        echo "${command_izar}  python3 -m monstereo.run eval --dir_ann ${dir_ann_eval} --model ${model_stereo} --model_mono ${model_mono} --hidden_size ${hidden_size} --vehicles --generate ${eval_mode} ${args}"
+        ${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann_eval} --model ${model_stereo} --model_mono ${model_mono} --hidden_size ${hidden_size} --vehicles --generate ${eval_mode} ${args}
     fi
 
 else
@@ -174,8 +178,8 @@ else
     then
 
         echo "Command joints mono processing"
-        echo "python3 -m  monstereo.run prep --dir_ann ${dir_ann} --monocular --dataset ${dataset} --dropout $dropout"
-        output=$(python3 -m  monstereo.run prep --dir_ann ${dir_ann} --monocular --dataset ${dataset} --dropout $dropout)
+        echo "python3 -m  monstereo.run prep --dir_ann ${dir_ann} --monocular --dataset ${dataset} --dropout $dropout ${args}"
+        output=$(python3 -m  monstereo.run prep --dir_ann ${dir_ann} --monocular --dataset ${dataset} --dropout $dropout ${args})
         joints_out "$output"
         joints_mono="$joints"
     fi
@@ -186,8 +190,8 @@ else
     # train mono model
     echo "Train mono "
     echo 
-    echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_mono} --hidden_size ${hidden_size} --monocular --dataset kitti --save"
-    output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_mono} --hidden_size ${hidden_size} --monocular --dataset kitti --save)
+    echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_mono} --hidden_size ${hidden_size} --monocular --dataset kitti --save ${args}"
+    output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_mono} --hidden_size ${hidden_size} --monocular --dataset kitti --save ${args})
     model_out "$output"
 
     model_mono="$model"
@@ -200,8 +204,8 @@ else
         if [ $joints_there == "0" ]
         then
             echo "Command joints stereo processing"
-            echo "${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann} --dataset ${dataset} --dropout $dropout"
-            output=$(${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann} --dataset ${dataset} --dropout $dropout)
+            echo "${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann} --dataset ${dataset} --dropout $dropout ${args}"
+            output=$(${command_izar}  python3 -m  monstereo.run prep --dir_ann ${dir_ann} --dataset ${dataset} --dropout $dropout ${args})
             joints_out "$output"
             joints_stereo="$joints"
         fi
@@ -210,15 +214,15 @@ else
 
 
         echo "Train stereo"
-        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_stereo} --hidden_size ${hidden_size} --dataset kitti --save"
-        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_stereo} --hidden_size ${hidden_size} --dataset kitti --save)
+        echo "${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_stereo} --hidden_size ${hidden_size} --dataset kitti --save ${args}"
+        output=$(${command_izar}  python3 -m  monstereo.run train --epochs ${epochs} --dataset ${dataset} --joints ${joints_stereo} --hidden_size ${hidden_size} --dataset kitti --save ${args})
         model_out "$output"
         model_stereo="$model"
     else
         model_stereo="nope"
     fi
 
-    echo "${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann} --model ${model_stereo}  --model_mono ${model_mono} --generate ${eval_mode}"
-    ${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann} --model ${model_stereo}  --model_mono ${model_mono} --generate ${eval_mode}
+    echo "${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann_eval} --model ${model_stereo}  --model_mono ${model_mono} --generate ${eval_mode} ${args}"
+    ${command_izar} python3 -m monstereo.run eval --dir_ann ${dir_ann_eval} --model ${model_stereo}  --model_mono ${model_mono} --generate ${eval_mode} ${args}
 
 fi

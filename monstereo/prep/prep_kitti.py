@@ -47,13 +47,14 @@ class PreprocessKitti:
     dic_names = defaultdict(lambda: defaultdict(list))
     dic_std = defaultdict(lambda: defaultdict(list))
 
-    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0):
+    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0, confidence=False):
 
         self.vehicles = vehicles
         self.dir_ann = dir_ann
         self.iou_min = iou_min
         self.monocular = monocular
         self.dropout = dropout
+        self.confidence = confidence
         #self.dir_gt = os.path.join('data', 'kitti', 'gt')
         self.dir_gt = os.path.join('data', 'kitti', 'training', "label_2")
         self.dir_images = 'data/kitti/training/image_2'
@@ -87,7 +88,7 @@ class PreprocessKitti:
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} \nmonocular: {}"
-                         "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout))
+                         "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout, confidence))
 
         self.path_joints = os.path.join(dir_out, 'joints-kitti-' +identifier + now_time + '.json')
         self.path_names = os.path.join(dir_out, 'names-kitti-' +identifier + now_time + '.json')
@@ -218,7 +219,7 @@ class PreprocessKitti:
                             if self.monocular:
                                 keypoint, length_keypoints, occ_kps = keypoints_dropout(keypoint, dropout)
                                 occluded_keypoints[phase].append(occ_kps)
-                                inp = preprocess_monoloco(keypoint, kk).view(-1).tolist()
+                                inp = preprocess_monoloco(keypoint, kk, confidence=self.confidence).view(-1).tolist()
                                 #print("INP", inp)
                                 lab = normalize_hwl(lab)
                                 if ys[idx_gt][10] < 0.5:
@@ -291,8 +292,8 @@ class PreprocessKitti:
                                         occluded_keypoints[phase].append(occ_kps)
                                         kps_r, _, occ_kps = self.keypoints_dropout(kps_r, dropout)
                                         occluded_keypoints[phase].append(occ_kps)
-                                        input_l = preprocess_monoloco(kps, kk).view(-1)
-                                        input_r = preprocess_monoloco(kps_r, kk).view(-1)
+                                        input_l = preprocess_monoloco(kps, kk, confidence = self.confidence).view(-1)
+                                        input_r = preprocess_monoloco(kps_r, kk, confidence= self.confidence).view(-1)
                                         keypoint = torch.cat((kps, kps_r), dim=2).tolist()
                                         inp = torch.cat((input_l, input_l - input_r)).tolist()
 

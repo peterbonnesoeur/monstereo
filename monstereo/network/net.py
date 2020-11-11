@@ -24,18 +24,27 @@ class Loco:
     LINEAR_SIZE_MONO = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False):
+    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
+        self.confidence = confidence
 
         assert self.net in ('monstereo', 'monoloco', 'monoloco_p', 'monoloco_pp')
         if self.net == 'monstereo':
             input_size = 68
+
+            if confidence:
+                input_size = 17*3*2
+
             output_size = 10
 
             if self.vehicles:
                 input_size = 24*2*2
+
+                if confidence:
+                    input_size=24*3*2
+
                 if self.kps_3d:
                     output_size = 24
                 else:
@@ -48,9 +57,17 @@ class Loco:
 
         elif self.net == 'monoloco_pp':
             input_size = 34
+
+            if confidence:
+                input_size = 17*3
+
             output_size = 9
             if self.vehicles:
                 input_size = 24*2
+
+                if confidence:
+                    input_size=24*3
+
                 if self.kps_3d:
                     output_size = 24
                 else:
@@ -107,7 +124,7 @@ class Loco:
                 dic_out = extract_outputs_mono(outputs)
 
             elif self.net == 'monoloco_pp':
-                inputs = preprocess_monoloco(keypoints, kk)
+                inputs = preprocess_monoloco(keypoints, kk, kps_3d = self.kps_3d, confidence = self.confidence)
                 outputs = self.model(inputs)
                 dic_out = extract_outputs(outputs)
 
@@ -116,7 +133,7 @@ class Loco:
                     keypoints_r = torch.tensor(keypoints_r).to(self.device)
                 else:
                     keypoints_r = keypoints[0:1, :].clone()
-                inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles)
+                inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =self.confidence)
                 outputs = self.model(inputs)
 
                 outputs = cluster_outputs(outputs, keypoints_r.shape[0])

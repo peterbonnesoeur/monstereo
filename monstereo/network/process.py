@@ -17,18 +17,22 @@ D_MIN = BF / z_max
 D_MAX = BF / z_min
 
 
-def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False):
+def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidence = False):
     """
     Combine left and right keypoints in all-vs-all settings
     """
     clusters = []
-    inputs_l = preprocess_monoloco(keypoints, kk)
-    inputs_r = preprocess_monoloco(keypoints_r, kk)
+    inputs_l = preprocess_monoloco(keypoints, kk, confidence)
+    inputs_r = preprocess_monoloco(keypoints_r, kk, confidence)
 
     if vehicles:
         inputs = torch.empty((0, 96)).to(inputs_l.device)
+        if confidence:
+            inputs = torch.empty((0, 24*3*2)).to(inputs_l.device)
     else:
         inputs = torch.empty((0, 68)).to(inputs_l.device)
+        if confidence:
+            inputs = torch.empty((0, 17*3*2)).to(inputs_l.device)
     for idx, inp_l in enumerate(inputs_l.split(1)):
         clst = 0
         # inp_l = torch.cat((inp_l, cat[:, idx:idx+1]), dim=1)
@@ -66,7 +70,7 @@ def preprocess_monoloco_old(keypoints, kk, zero_center=False):
     return kps_out
 
 
-def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False):
+def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confidence = False):
 
     """ Preprocess batches of inputs
     keypoints = torch tensors of (m, 3, 24)/(m,4,24)  or list [3,24]/[4,24]
@@ -75,6 +79,8 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False):
     or, if we have the confidences:
      Outputs =  torch tensors of (m, 72)/(m,96) in meters normalized (z=1) and zero-centered using the center of the box
     """
+
+    #? The confidenc eparameters adds the confidence for the keypoints in the process.
     if kps_3d:
         nb_dim = 3
     else: 
@@ -96,11 +102,17 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False):
         kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
     else:
         kps_norm = xy1_all
+    
+    if confidence : #Add the confidence in the process
+        nb_dim+=1
+
     kps_out = kps_norm[:, :, 0:nb_dim].reshape(kps_norm.size()[0], -1)  # no contiguous for view
     #kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :]), dim=1)
     return kps_out
 
 def clear_keypoints(keypoints, nb_dim = 2):
+
+    #! To rewrite in the last version of the code
     
     try:
         process_mode = os.environ["process_mode"]

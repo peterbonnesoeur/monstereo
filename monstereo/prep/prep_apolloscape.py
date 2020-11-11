@@ -82,7 +82,7 @@ class PreprocessApolloscape:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20, radius=200, dropout = 0):
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20, radius=200, dropout = 0, confidence = False):
 
         logging.basicConfig(level=logging.INFO)
         #self.logger = logging.getLogger(__name__)
@@ -95,6 +95,8 @@ class PreprocessApolloscape:
         self.kps_3d = kps_3d
         
         self.dir_ann = dir_ann
+
+        self.confidence = confidence
 
         dir_apollo = os.path.join('data', 'apolloscape')
         dir_out = os.path.join('data', 'arrays')
@@ -118,7 +120,7 @@ class PreprocessApolloscape:
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} "
-                         "\nprocess_mode : {} \nDropout images: {}".format(dir_ann, process_mode, dropout))
+                         "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {}".format(dir_ann, process_mode, dropout, confidence))
 
 
         self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + '-' + now_time + '.json')
@@ -198,7 +200,7 @@ class PreprocessApolloscape:
 
                     kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout)
                     occluded_keypoints[phase].append(occ_kps)
-                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d).view(-1).tolist()
+                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d, confidence =self.confidence).view(-1).tolist()
                     
                     self.dic_jo[phase]['kps'].append(kps.tolist())
                     self.dic_jo[phase]['X'].append(list(inp))
