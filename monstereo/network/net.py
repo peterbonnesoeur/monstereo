@@ -259,8 +259,11 @@ class Loco:
             except KeyError:
                 continue
             
-            if len(car_model) !=0:
-                dic_out['car_model'] = car_model[idx]   #Only for apolloscape
+            try:
+                if len(car_model) !=0:
+                    dic_out['car_model'] = car_model[idx]   #Only for apolloscape
+            except :
+                continue
 
             # Only for MonStereo
             try:

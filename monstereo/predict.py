@@ -186,7 +186,7 @@ def factory_outputs(args, images_outputs, output_path, pifpaf_outputs, dic_out=N
                 skeleton_painter.keypoints(ax, keypoint_sets, scores=scores)
 
     else:
-        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d'])):
+        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps'])):
             
             epistemic = False
             if args.n_dropout > 0:
