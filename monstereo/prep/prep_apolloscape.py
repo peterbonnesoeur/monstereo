@@ -116,6 +116,9 @@ class PreprocessApolloscape:
 
         identifier = '-apolloscape'
 
+        if self.kps_3d:
+            identifier+="-kps_3d"
+
         name_out = 'ms-' + now_time + identifier+"-prep"+".txt"
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
@@ -157,7 +160,7 @@ class PreprocessApolloscape:
                 if ii ==-100:
                     print("val_scenes",self.validation_scenes)
 
-                if ii==(-100):
+                if ii==(-10):
                     print("BREAK")
                     break
 
@@ -374,178 +377,3 @@ def factory(dataset, dir_apollo):
     scenes = [os.path.join(path_img, file) for file in os.listdir(path_img) if file.endswith(".jpg")]
     
     return scenes, train_scenes, validation_scenes
-
-
-"""
-def extract_ground_truth(self, car_poses,camera_id, scene_id):
-        
-        with open(car_poses) as json_file:
-            data = json.load(json_file) #open the pose of the cars
-
-        dic_vertices = {}
-        dic_boxes = {}
-        dic_poses = {}
-        vertices_to_keypoints = {}
-        dic_keypoints = {}
-
-        #Extract the boxes, vertices and the poses of each cars                   
-        for car_index, car in enumerate(data):
-            name_car = car_id2name[car['car_id']].name 
-            car_model = os.path.join(self.path, "car_models_json",name_car+".json")
-
-            intrinsic_matrix = intrinsic_vec_to_mat(K["Camera_"+camera_id])
-
-            vertices_r, triangles, bbox_3d , w, l, h = car_projection(car_model, np.array([1,1,1]), T = np.array(car['pose']),  turn_over = True, bbox = True
-                                                           )
-            vertices_2d = np.matmul(vertices_r,intrinsic_matrix.transpose()) # Projected vertices on the 2D plane
-            
-            box_gt = bbox_gt_extract(bbox_3d, intrinsic_matrix)  # Take the overal bounding box in the 2D space
-            
-            dic_vertices[car_index] = vertices_2d
-            dic_boxes[car_index] = [box_gt, w, l, h]
-            dic_poses[car_index] = np.array(car['pose'])
-
-        new_keypoints = None
-        
-        #  print("DIC_BOXES", dic_boxes)
-                           
-        if "sample" not in self.path:
-                           
-            car_keypoints = os.path.join(self.path, "keypoints", scene_id)
-            
-            keypoints_list = []
-            boxes_gt_list = []  # Countain the the 2D bounding box of the vehicles
-            boxes_3d_list = []
-            ys_list = []               
-            
-            #Compute the similarity between each set of car models in the 3D space and the set of keypoints in the 2D space
-            for index_keypoints, file in enumerate(os.listdir(car_keypoints)):
-                if file.endswith(".txt"):
-                    keypoints = np.loadtxt(os.path.join(car_keypoints, file))
-
-                    dic_keypoints[index_keypoints] = keypoints
-
-                    k_t_c, index_cad, count = keypoints_to_cad_model(keypoints, dic_vertices, radius = self.radius)
-
-                    if index_cad not in vertices_to_keypoints.keys():
-                        vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
-                    elif vertices_to_keypoints[index_cad][1] < count:
-                        vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
-            
-            for index_cad, (index_keypoints, count, k_t_c) in vertices_to_keypoints.items()   :
-
-                if (index_cad != -1 and count >=1):
-
-                    keypoints = dic_keypoints[index_keypoints]
-                    vertices_2d = dic_vertices[index_cad]
-                    new_keypoints = keypoint_expander(vertices_2d, keypoints, self.buffer)
-                    #Pixel keypoints with a Z component
-                    
-                    #Return an ordered list of the keypoints in the 3D space, their Bounding box in the 3D space and their pose in the 3D space
-                    keypoints_list.append( new_keypoints)
-                    
-                    
-                    boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                    
-                    w, l, h = dic_boxes[index_cad][1:]
-                    pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-                    
-                    boxes_3d_list.append([xc, yc, zc, w, l, h])
-                    
-                    # CHECK IF IT IS PI or 2PI
-                    yaw = yaw%np.pi
-                    
-                    sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
-                    
-                    if True :
-                        rtp = to_spherical([xc, yc, zc])
-                        r, theta, phi = rtp # With r =d = np.linalg.norm([xc,yc,zc]) -> conversion to spherical coordinates 
-                        ys_list.append([theta, phi, zc, r, h, w, l, sin, cos, yaw])
-                    else:
-                        ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
-                    
-                    
-            
-            return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list
-        
-        else:
-            
-            for index_cad, _ in dic_vertices.items() :
-                
-                boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                w, l, h = dic_boxes[index_cad][1:]
-                pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-
-                boxes_3d_list.append([xc, yc, zc, w, l, h])
-                yaw = yaw%np.pi
-
-                ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, np.sin(yaw), np.cos(yaw), yaw])
-            
-            
-            return boxes_gt_list, boxes_3d_list, None, ys_lists
-
-
-
-def kps_apolloscape_to_monoloco(kps, kps_3d = False):
-    new_kps = []
-    for i in range(67):
-        if i not in kps[:,0]:
-            new_kps.append([i, -100, -100, -100])
-        else:
-            new_kps.append(kps[np.where(kps[:,0] == i)[0], :][0])
-    new_kps = np.array(new_kps)
-    
-    new_kps = new_kps[KPS_MAPPING] if kps_3d else new_kps[KPS_MAPPING][:,:3] #Remove or let the third dimension
-    
-    for i in range(len(new_kps)):
-        if new_kps[i,1] < 0:
-            new_kps[i, 0] = 0.0 # If the keypoint is not visible in the dataset, the confidence is of 0
-        else:
-            new_kps[i, 0] = 1.0 # If the keypoint is visible in the dataset, its confidence is of 1.0
-        
-    if kps_3d:
-        return new_kps[:,[1,2,3,0]]
-    else:
-        return new_kps[:,[1,2,0]]
-
-
-def bbox_3d_extract(vertices):
-    
-    min_x = np.min(vertices[:,0])
-    max_x= np.max(vertices[:,0])
-    min_y = np.min(vertices[:,1])
-    max_y= np.max(vertices[:,1])
-    min_z = np.min(vertices[:,2])
-    max_z= np.max(vertices[:,2])
-    
-    h = max_y - min_y
-    w = max_x - min_x
-    l = max_z- min_z
-    
-    bbox_3d=[]
-    for x in [min_x, max_x]:
-        for y in [min_y, max_y]:
-            for z in [min_z, max_z]:
-                bbox_3d.append([x,y,z])
-                
-    
-    return(np.array(bbox_3d), w, l, h)
-
-def bbox_3d_extract(vertices):
-    min_x = np.min(vertices[:,0])
-    max_x= np.max(vertices[:,0])
-    min_y = np.min(vertices[:,1])
-    max_y= np.max(vertices[:,1])
-    min_z = np.min(vertices[:,2])
-    max_z= np.max(vertices[:,2])
-    
-    bbox_3d=[]
-    for x in [min_x, max_x]:
-        for y in [min_y, max_y]:
-            for z in [min_z, max_z]:
-                bbox_3d.append([x,y,z])
-    return(np.array(bbox_3d))
-
-"""

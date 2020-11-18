@@ -93,6 +93,9 @@ class Trainer:
         if dataset == 'apolloscape':
             self.identifier+='-apolloscape'
 
+        if self.kps_3d:
+            identifier+="-kps_3d"
+
         self.identifier+="-"+dataset
         # Select the device
         use_cuda = torch.cuda.is_available()
