@@ -1,0 +1,45 @@
+#!/bin/bash -l
+
+#SBATCH --nodes              1
+
+#SBATCH --ntasks             1
+#SBATCH --cpus-per-task      16
+#SBATCH --partition gpu  
+#SBATCH --qos gpu 
+#SBATCH --gres gpu:1
+#SBATCH --time 13:00:00
+
+#source ./train_eval.sh 0 data/kitti-pifpaf/annotations_originals ${dropout} kitti data/kitti-pifpaf/annotations_originals
+
+args=''
+
+export dropout='0'
+dropout='0'
+
+export process_mode='mean'
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+
+export dropout='0.3'
+dropout='0.3'
+
+export process_mode='mean'
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+
+args='--confidence'
+
+export dropout='0'
+dropout='0'
+
+export process_mode='mean'
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+
+export dropout='0.3'
+dropout='0.3'
+
+export process_mode='mean'
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+    source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations ${args}
+

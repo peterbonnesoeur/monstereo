@@ -1,0 +1,29 @@
+#!/bin/bash -l
+
+#SBATCH --nodes              1
+
+#SBATCH --ntasks             1
+#SBATCH --cpus-per-task      8
+#SBATCH --partition gpu  
+#SBATCH --reservation=vita-2020-11 
+#SBATCH --qos gpu 
+#SBATCH --gres gpu:1
+#SBATCH --time 05:00:00
+
+
+
+export dropout='0.3'
+dropout='0.3'
+
+
+export process_mode='NULL_ISNT_IT'
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout}
+
+export process_mode='neg'
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout}
+
+export process_mode='mean'
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout}
+
+export process_mode='mean_std'
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout}

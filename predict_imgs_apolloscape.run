@@ -1,0 +1,110 @@
+#!/bin/bash -l
+
+#SBATCH --nodes              1
+
+#SBATCH --ntasks             1
+#SBATCH --cpus-per-task      3
+#SBATCH --partition gpu  
+#SBATCH --reservation=vita-2020-11 
+#SBATCH --qos gpu 
+#SBATCH --gres gpu:1
+#SBATCH --time 05:00:00
+
+dir_ann_car='data/apollo-pifpaf/annotations'
+
+ouput_type='combined_2'
+
+num_images='70'
+
+
+input="data/apolloscape/train/split/validation-list.txt"
+
+dataset="apolloscape"
+
+
+args="--z_max 50"
+
+
+
+# Regular loop
+
+process_modes=('mean')
+output_dirs=('visual_tests/val_apolloscape_mean')
+models=('data/models/ms-201109-122012-vehicles-apolloscape-apolloscape.pkl')
+names_gt=('data/arrays/names-apolloscape-train-201109-122140.json')
+
+len=${#process_modes[@]}
+
+
+for ((j=0;j<"$len";j++)); do
+    echo $i ${output_dirs[j]} ${process_modes[j]} ${models[j]} ${names_gt[j]}
+    export process_mode=${process_modes[j]}
+    output_dir=${output_dirs[j]}
+    model=${models[j]}
+    name_gt=${names_gt[j]}
+    echo "./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} ${args} ${num_images} ${input} ${dataset}"
+
+    source ./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} "${args}" ${num_images}  ${input} ${dataset}
+done
+
+
+#Loop for the dropout
+
+process_modes=('mean')
+output_dirs=('visual_tests/val_apolloscape_mean_drop')
+models=('data/models/ms-201108-222047-vehicles-apolloscape-apolloscape.pkl')
+names_gt=('data/arrays/names-apolloscape-train-201109-065350.json')
+
+len=${#process_modes[@]}
+
+for ((j=0;j<"$len";j++)); do
+    echo $i ${output_dirs[j]} ${process_modes[j]} ${models[j]} ${names_gt[j]}
+    export process_mode=${process_modes[j]}
+    output_dir=${output_dirs[j]}
+    model=${models[j]}
+    name_gt=${names_gt[j]}
+    echo "./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} ${args} ${num_images} ${input} ${dataset}"
+
+    source ./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} "${args}" ${num_images}  ${input} ${dataset}
+done
+
+
+#Loop for the loose
+
+process_modes=('mean')
+output_dirs=('visual_tests/val_apolloscape_mean1')
+models=('data/models/ms-201109-094427-vehicles-apolloscape-apolloscape.pkl')
+names_gt=('data/arrays/names-apolloscape-train-201109-104656.json')
+
+len=${#process_modes[@]}
+
+for ((j=0;j<"$len";j++)); do
+    echo $i ${output_dirs[j]} ${process_modes[j]} ${models[j]} ${names_gt[j]}
+    export process_mode=${process_modes[j]}
+    output_dir=${output_dirs[j]}
+    model=${models[j]}
+    name_gt=${names_gt[j]}
+    echo "./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} ${args} ${num_images} ${input} ${dataset}"
+
+    source ./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} "${args}" ${num_images}  ${input} ${dataset}
+done
+
+#Loop for the looses dropout
+
+process_modes=('mean')
+output_dirs=('visual_tests/val_apolloscape_mean_drop1')
+models=('data/models/ms-201109-134648-vehicles-apolloscape-apolloscape.pkl')
+names_gt=('data/arrays/names-apolloscape-train-201109-135407.json')
+
+len=${#process_modes[@]}
+
+for ((j=0;j<"$len";j++)); do
+    echo $i ${output_dirs[j]} ${process_modes[j]} ${models[j]} ${names_gt[j]}
+    export process_mode=${process_modes[j]}
+    output_dir=${output_dirs[j]}
+    model=${models[j]}
+    name_gt=${names_gt[j]}
+    echo "./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} ${args} ${num_images} ${input} ${dataset}"
+
+    source ./predict_imgs.sh ${model} ${name_gt} ${dir_ann_car} ${output_dir} ${ouput_type} "${args}" ${num_images}  ${input} ${dataset}
+done
