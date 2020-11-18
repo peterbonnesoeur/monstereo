@@ -484,9 +484,13 @@ class Printer:
 
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
+            axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5,
+                        str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
         else:
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] - 5,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
+            axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5,
+                        str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
 
     def draw_circle(self, axes, uv, color):
 

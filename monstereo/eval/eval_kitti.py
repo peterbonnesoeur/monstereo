@@ -25,7 +25,7 @@ class EvalKitti:
                 '27', '29', '31', '49', '54', '63', '74')
     ALP_THRESHOLDS = ('<0.5m', '<1m', '<2m')
     OUR_METHODS = ['monoloco_pp']#['geometric', 'monoloco', 'monoloco_pp', 'pose', 'reid', 'monstereo']
-    METHODS_MONO = ['m3d']#, 'monopsr']
+    METHODS_MONO = ['m3d', 'monodis']#, 'monopsr']
     METHODS_STEREO = ['3dop', 'pseudo-lidar']#['3dop', 'psf', 'pseudo-lidar', 'e2e', 'oc-stereo']
     BASELINES = []#'task_error', 'pixel_error']
     HEADERS = ('method', '<0.5', '<1m', '<2m', 'easy', 'moderate', 'hard', 'all')

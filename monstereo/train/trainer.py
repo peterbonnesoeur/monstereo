@@ -65,6 +65,8 @@ class Trainer:
         self.sched_step = sched_step
         self.sched_gamma = sched_gamma
         self.clusters = ['10', '20', '30', '50', '>50']
+        self.angles= [0, 20, 40, 60, 80, 100, 120, 140, 160, 180]
+        self.dic_angles = defaultdict(list)  # initialized to zero
         if self.dataset == 'apolloscape':
             self.clusters = APOLLO_CLUSTERS
             print("CLUSTERS", self.clusters)
@@ -347,8 +349,23 @@ class Trainer:
         # Distance 
         errs = torch.abs(extract_outputs(outputs)['d'] - extract_labels(labels)['d'])
 
-        for err in errs:
+        yaws = extract_outputs(outputs)['yaw'][0]
+
+
+        for err,yaw in zip(errs,yaws):
             self.errors[clst].append(err)
+            for angle in reversed(self.angles):
+                if yaw>0:
+                    if yaw>angle*np.pi/180:
+                        break
+                else:
+                    if yaw<(-angle*np.pi/180):
+                        break
+            if yaw>0:
+                self.dic_angles[str(angle)].append(err)
+            else:
+                self.dic_angles[str(-angle)].append(err)
+
         assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
@@ -359,23 +376,16 @@ class Trainer:
         dic_err[clst]['bi%'] += bi_perc * rel_frac
         dic_err[clst]['std'] = errs.std()
 
+        
+
         # Only for apolloscape evaluation :
         if self.dataset =='apolloscape':
 
-            #print(threshold_mean)
-
             selected = extract_labels(labels)['d'] < 100
 
-            #print(len(selected), torch.sum(selected))
             errs = (torch.abs(extract_outputs(outputs)['d'][selected] - extract_labels(labels)['d'][selected]))
 
-            #print(type(selected), type(torch.Tensor([False]*len(selected))))
-            #print("OUTPUTS :\n", extract_outputs(outputs)['xyzd'][:,:3] , "\nLABELS : \n",extract_labels(labels)['xyzd'][:,:3])
-            #print(selected[:,0])
-
             errs = torch.norm(extract_outputs(outputs)['xyzd'][:,:3] - extract_labels(labels)['xyzd'][:,:3] , p = 2, dim = 1)[selected[:,0]]
-
-            #print(errs)
 
             dic_err[clst]['threshold_loose_abs']= [torch.sum((errs < threshold_loose[1])).double()/torch.sum(selected)]
             dic_err[clst]['threshold_strict_abs']= [torch.sum( errs < threshold_strict[1]).double()/torch.sum(selected)]
@@ -424,6 +434,12 @@ class Trainer:
                                      dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
                                      dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
                                      dic_err[clst]['l'] * 100, dic_err[clst]['aux'] * 100))
+
+            self.logger.info("Error for the distance depending on the angle\n")
+
+            for angle in sorted(self.dic_angles.keys(), key=lambda x: float(x)):
+                self.logger.info("Mean distance error for an angle inferior to {}: \nAv. error: {:.2f} m with an std of  {:.2f}"
+                             .format(angle, np.mean(self.dic_angles[angle]), np.std(self.dic_angles[angle])))
 
             if self.dataset == 'apolloscape':
 
