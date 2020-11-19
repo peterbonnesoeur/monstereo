@@ -341,7 +341,8 @@ class Printer:
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps']):
                     if idx not in previous_idx:
                         self.draw_3d_visu(axes, idx, color = 'red')
-                        self.draw_missing_pos(axes, idx)
+                        #self.draw_missing_pos(axes, idx)
+                        self.draw_missing_ellipses(axes, idx)
         if legend:
             draw_legend(axes)
             
@@ -369,20 +370,23 @@ class Printer:
         triangles = np.array(data['faces']) - 1
 
         x,y,z = self.pos_pred[idx]
-        T = np.float32([0.0, self.angles[idx] ,0.0 ,x,y,z])
-        if 'kitti' in self.output_path or  "export" in self.output_path:
+        
+        if "Camera" in self.output_path:
+            T = np.float32([0.0, self.angles[idx] ,0.0 ,x,y,z])
+        #if 'kitti' in self.output_path or  "export" in self.output_path:
+        else:
             T = np.float32([0.0, self.angles[idx] + np.pi/2 , 0.0 ,x,y,z])
         scale = np.float32([1, 1, 1])
-
-        vertices_r = project(T, scale, vertices )
-        #ax.set_title('car_type: '+data['car_type'])
-        axes[3].set_xlim([-20, 20])
-        axes[3].set_ylim([0, 70])
-        axes[3].set_zlim([0, 10])
-        axes[3].set_xlabel("X")
-        axes[3].set_ylabel("Y")
-        axes[3].set_zlabel("Z")
-        axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
+        if z< self.z_max:
+            vertices_r = project(T, scale, vertices )
+            #ax.set_title('car_type: '+data['car_type'])
+            axes[3].set_xlim([-20, 20])
+            axes[3].set_ylim([0, self.z_max])
+            axes[3].set_zlim([0, 10])
+            axes[3].set_xlabel("X")
+            axes[3].set_ylabel("Y")
+            axes[3].set_zlabel("Z")
+            axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
 
 
 
@@ -427,7 +431,27 @@ class Printer:
 
     def draw_missing_pos(self,axes, idx):
         if self.zz_pred[idx]<=self.z_max:
-            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction", markersize=5, marker='o')
+            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT", markersize=5, marker='o')
+
+
+    def draw_missing_ellipses(self, axes, idx):
+        """draw uncertainty ellipses"""
+        if self.zz_pred[idx]<=self.z_max:
+            print(self.zz_pred[idx])
+            angle = get_angle(self.xx_pred[idx], self.zz_pred[idx])
+            ellipse_ale = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_ale[idx] * 2,
+                                height=1, angle=angle, color='orange', fill=False, label="Aleatoric Uncertainty without GT",
+                                linewidth=1.3)
+            ellipse_var = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_epi[idx] * 2,
+                                height=1, angle=angle, color='r', fill=False, label="Uncertainty without GT",
+                                linewidth=1, linestyle='--')
+
+            axes[1].add_patch(ellipse_ale)
+            if self.epistemic:
+                axes[1].add_patch(ellipse_var)
+
+            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT", markersize=5, marker='o')
+ 
 
     def draw_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""

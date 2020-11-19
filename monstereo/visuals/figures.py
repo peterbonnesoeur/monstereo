@@ -306,8 +306,8 @@ def get_percentile(dist_gmm):
 
 def printing_styles(stereo):
     if stereo:
-        style = {"labels": ['3DOP', 'Task_error', 'Monoloco++', 'MonoPSR', 'Pseudo-Lidar', 'MonStereo', 'Mono3D'],
-                 "methods": ['3dop', 'task_error', 'monoloco_pp', 'monopsr', 'pseudo-lidar', 'monstereo', 'm3d'],
+        style = {"labels": ['3DOP', 'monogrnet', 'Monoloco++', 'MonoDis', 'Pseudo-Lidar', 'MonStereo', 'Mono3D'],
+                 "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis', 'pseudo-lidar', 'monstereo', 'm3d'],
                  "mks": ['s', 'p', 'o', 'v', '*', '^', '.'],
                  "mksizes": [6, 6, 6, 6, 6, 6, 6], "lws": [1.2, 1.2, 1.2, 1.2, 1.3, 1.5, 1.3],
                  "colors": ['gold', 'skyblue', 'darkgreen', 'pink', 'darkorange', 'b', 'olive'],
