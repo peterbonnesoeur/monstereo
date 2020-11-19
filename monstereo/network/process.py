@@ -95,7 +95,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     keypoints = clear_keypoints(keypoints, nb_dim)
     # Projection in normalized image coordinates and zero-center with the center of the bounding box
     
-    xy1_all = pixel_to_camera(keypoints[:, 0:nb_dim, :], kk, 10)
+    xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
     if zero_center:#
         uv_center = get_keypoints(keypoints, mode='center')
         xy1_center = pixel_to_camera(uv_center, kk, 10)
@@ -103,12 +103,22 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     else:
         kps_norm = xy1_all
     
-    if confidence : #Add the confidence in the process
-        nb_dim+=1
+    kps_out = kps_norm[:, :, 0:2]
+    #print("after removal", kps_out)
+    if kps_3d:
+        kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
+    #print("WITH KPS_3D", kps_out)
+    if confidence:
+        kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :].unsqueeze(-1)), dim=2)
+        
+    #print("WITH conf", kps_out)
 
-    kps_out = kps_norm[:, :, 0:nb_dim].reshape(kps_norm.size()[0], -1)  # no contiguous for view
-    #kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :]), dim=1)
+    kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
+    #print("after flattening", kps_out)
+    #raise ValueError
     return kps_out
+
+
 
 def clear_keypoints(keypoints, nb_dim = 2):
 
