@@ -21,7 +21,6 @@ def pixel_to_camera(uv_tensor, kk, z_met):
         uv_tensor = uv_tensor.permute(0, 2, 1)  # permute to have 2 as last dim to be padded
         assert uv_tensor.size()[-1] == 2, "Tensor size not recognized"
     uv_padded = F.pad(uv_tensor, pad=(0, 1), mode="constant", value=1)  # pad only last-dim below with value 1
-
     kk_1 = torch.inverse(kk)
     xyz_met_norm = torch.matmul(uv_padded, kk_1.t())  # More general than torch.mm
     xyz_met = xyz_met_norm * z_met

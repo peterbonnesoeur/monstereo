@@ -116,18 +116,21 @@ class PreprocessApolloscape:
 
         identifier = '-apolloscape'
 
+        kps_3d_id =""
         if self.kps_3d:
             identifier+="-kps_3d"
+            kps_3d_id+="-kps_3d"
 
         name_out = 'ms-' + now_time + identifier+"-prep"+".txt"
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} "
-                         "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {}".format(dir_ann, process_mode, dropout, confidence))
+                         "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {} \nKeypoints 3D: {}".format(dir_ann, process_mode, dropout, confidence, self.kps_3d))
 
 
-        self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + '-' + now_time + '.json')
-        self.path_names = os.path.join(dir_out, 'names-apolloscape-' + dataset + '-' + now_time + '.json')
+        
+        self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')
+        self.path_names = os.path.join(dir_out, 'names-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')
 
         
         self.path  = os.path.join(dir_apollo, dataset)

@@ -112,7 +112,6 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
         kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :].unsqueeze(-1)), dim=2)
         
     #print("WITH conf", kps_out)
-
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
     #print("after flattening", kps_out)
     #raise ValueError

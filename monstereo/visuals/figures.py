@@ -191,7 +191,7 @@ def show_box_plot(dic_errors, clusters, show=False, save=False, identifier=''):
     dir_out = DIR_OUT+identifier
     excl_clusters = ['all', 'easy', 'moderate', 'hard']
     clusters = [int(clst) for clst in clusters if clst not in excl_clusters]
-    methods = ('monstereo', 'pseudo-lidar', '3dop', 'monoloco_pp', 'monoloco', 'm3d')
+    methods = ('monstereo', 'pseudo-lidar', '3dop', 'monoloco_pp', 'monodis', 'm3d', 'monogrnet', 'smoke')
     y_min = 0
     y_max = 25  # 18 for the other
     xxs = get_distances(clusters)
@@ -306,12 +306,12 @@ def get_percentile(dist_gmm):
 
 def printing_styles(stereo):
     if stereo:
-        style = {"labels": ['3DOP', 'monogrnet', 'Monoloco++', 'MonoDis', 'Pseudo-Lidar', 'MonStereo', 'Mono3D'],
-                 "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis', 'pseudo-lidar', 'monstereo', 'm3d'],
-                 "mks": ['s', 'p', 'o', 'v', '*', '^', '.'],
-                 "mksizes": [6, 6, 6, 6, 6, 6, 6], "lws": [1.2, 1.2, 1.2, 1.2, 1.3, 1.5, 1.3],
-                 "colors": ['gold', 'skyblue', 'darkgreen', 'pink', 'darkorange', 'b', 'olive'],
-                 "lstyles": ['solid', 'solid', 'dashed', 'dashed', 'solid', 'solid', 'solid']}
+        style = {"labels": ['3DOP', 'MonoGRNet', 'Monoloco++', 'MonoDis', 'Pseudo-Lidar', 'MonStereo', 'Mono3D', 'Smoke'],
+                 "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis', 'pseudo-lidar', 'monstereo', 'm3d', 'smoke'],
+                 "mks": ['s', 'p', 'o', 'v', '*', '^', '.', '^'],
+                 "mksizes": [6, 6, 6, 6, 6, 6, 6,6], "lws": [1.2, 1.2, 1.2, 1.2, 1.3, 1.5, 1.3, 1.2],
+                 "colors": ['gold', 'skyblue', 'darkgreen', 'pink', 'darkorange', 'b', 'olive', 'darkblue'],
+                 "lstyles": ['solid', 'solid', 'dashed', 'dashed', 'solid', 'solid', 'solid', 'solid']}
     else:
         style = {"labels": ['Mono3D', 'Geometric Baseline', 'MonoPSR', '3DOP (stereo)', 'MonoLoco', 'Monoloco++'],
                  "methods": ['m3d', 'geometric', 'monopsr', '3dop', 'monoloco', 'monoloco_pp'],

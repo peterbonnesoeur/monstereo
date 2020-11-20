@@ -92,11 +92,8 @@ class Trainer:
         if  "originals" in joints:
             self.identifier+="-originals"
 
-        if dataset == 'apolloscape':
-            self.identifier+='-apolloscape'
-
         if self.kps_3d:
-            identifier+="-kps_3d"
+            self.identifier+="-kps_3d"
 
         self.identifier+="-"+dataset
         # Select the device
@@ -177,7 +174,7 @@ class Trainer:
             self.logger.info("Training arguments: \nepochs: {} \nbatch_size: {} \ndropout: {}"
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
-                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nkps_3d: {} \nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} "
+                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} \nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} "
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
                                      output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d, process_mode, dropout_images, self.confidence))
         else:
