@@ -10,7 +10,7 @@ from .logs import set_logger
 from .apolloscape import K,KPS_MAPPING, APOLLO_CLUSTERS, car_name2id, car_id2name, intrinsic_vec_to_mat, euler_angles_to_rotation_matrix, \
                                 rotation_matrix_to_euler_angles, convert_pose_mat_to_6dof, project, pose_extraction, \
                                 threshold_loose ,threshold_strict ,threshold_mean , intrinsic_mat_to_vec, \
-                                car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model
+                                car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, keypoint_projection
 
 from .nuscenes import select_categories
 from .stereo import mask_joint_disparity, average_locations, extract_stereo_matches, \

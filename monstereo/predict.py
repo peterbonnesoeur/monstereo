@@ -39,10 +39,10 @@ def predict(args):
         bs = 2
     else:
         bs = 1
+
     data_loader = torch.utils.data.DataLoader(
         data, batch_size=bs, shuffle=False,
         pin_memory=args.pin_memory, num_workers=args.loader_workers)
-    
 
     for idx, (image_paths, image_tensors, processed_images_cpu) in enumerate(data_loader):
         images = image_tensors.permute(0, 2, 3, 1)
@@ -120,13 +120,13 @@ def predict(args):
             if args.mode == 'mono':
                 print("Prediction with MonoLoco++")
                 dic_out = monoloco.forward(keypoints, kk)
-                dic_out = monoloco.post_process(dic_out, boxes, keypoints, kk, dic_gt)
+                dic_out = monoloco.post_process(dic_out, boxes, keypoints, kk, dic_gt, kps_3d=args.kps_3d)
                 #print("RESULTS", dic_out)
             else:
                 print("Prediction with MonStereo")
                 boxes_r, keypoints_r = preprocess_pifpaf(pifpaf_outs['right'], im_size)
                 dic_out = monstereo.forward(keypoints, kk, keypoints_r=keypoints_r)
-                dic_out = monstereo.post_process(dic_out, boxes, keypoints, kk, dic_gt)
+                dic_out = monstereo.post_process(dic_out, boxes, keypoints, kk, dic_gt, kps_3d = args.kps_3d)
 
         else:
             dic_out = defaultdict(list)
@@ -186,7 +186,7 @@ def factory_outputs(args, images_outputs, output_path, pifpaf_outputs, dic_out=N
                 skeleton_painter.keypoints(ax, keypoint_sets, scores=scores)
 
     else:
-        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps'])):
+        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu'])):
             
             epistemic = False
             if args.n_dropout > 0:

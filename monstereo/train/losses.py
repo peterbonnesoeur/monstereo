@@ -9,7 +9,7 @@ from ..network import extract_labels, extract_labels_aux, extract_outputs
 
 
 class AutoTuneMultiTaskLoss(torch.nn.Module):
-    def __init__(self, losses_tr, losses_val, lambdas, tasks):
+    def __init__(self, losses_tr, losses_val, lambdas, tasks, kps_3d = False):
         super().__init__()
 
         assert all(l in (0.0, 1.0) for l in lambdas)
@@ -17,6 +17,7 @@ class AutoTuneMultiTaskLoss(torch.nn.Module):
         self.losses_val = losses_val
         self.lambdas = lambdas
         self.tasks = tasks
+        self.kps_3d = kps_3d
         self.log_sigmas = torch.nn.Parameter(torch.zeros((len(lambdas),), dtype=torch.float32), requires_grad=True)
 
     def forward(self, outputs, labels, phase='train'):
@@ -38,13 +39,23 @@ class AutoTuneMultiTaskLoss(torch.nn.Module):
 
 
 class MultiTaskLoss(torch.nn.Module):
-    def __init__(self, losses_tr, losses_val, lambdas, tasks):
+    def __init__(self, losses_tr, losses_val, lambdas, tasks, kps_3d=False):
         super().__init__()
 
         self.losses = torch.nn.ModuleList(losses_tr)
         self.losses_val = losses_val
         self.lambdas = lambdas
         self.tasks = tasks
+        self.kps_3d = kps_3d
+
+        if self.kps_3d:
+            self.tasks = tuple(list(self.tasks[:-1])+['z_kp'+str(i) for i in range (24)])
+            lambda_kps = lambdas[-1]
+            self.lambdas = self.lambdas[:-1] + [lambda_kps]*24
+
+        #print("TASKS multi task", self.tasks)
+        #print("Lambdas multi task", self.lambdas)
+
         if len(self.tasks) == 1 and self.tasks[0] == 'aux':
             self.flag_aux = True
         else:
@@ -53,11 +64,11 @@ class MultiTaskLoss(torch.nn.Module):
     def forward(self, outputs, labels, phase='train'):
 
         assert phase in ('train', 'val')
-        out = extract_outputs(outputs, tasks=self.tasks)
+        out = extract_outputs(outputs, tasks=self.tasks, kps_3d = self.kps_3d)
         if self.flag_aux:
             gt_out = extract_labels_aux(labels, tasks=self.tasks)
         else:
-            gt_out = extract_labels(labels, tasks=self.tasks)
+            gt_out = extract_labels(labels, tasks=self.tasks, kps_3d= self.kps_3d)
         loss_values = [lam * l(o, g) for lam, l, o, g in zip(self.lambdas, self.losses, out, gt_out)]
         loss = sum(loss_values)
 
@@ -69,16 +80,22 @@ class MultiTaskLoss(torch.nn.Module):
 
 class CompositeLoss(torch.nn.Module):
 
-    def __init__(self, tasks):
+    def __init__(self, tasks, kps_3d = False):
         super(CompositeLoss, self).__init__()
 
         self.tasks = tasks
+        self.kps_3d = kps_3d
+        if self.kps_3d:
+            self.tasks = tuple(list(self.tasks[:-1])+['z_kp'+str(i) for i in range (24)])
+        #print("Tasks", tasks)
         self.multi_loss_tr = {task: (LaplacianLoss() if task == 'd'
                                      else (nn.BCEWithLogitsLoss() if task in ('aux', )
-                                           else nn.L1Loss())) for task in tasks}
+                            
+                                           else nn.L1Loss())) for task in self.tasks}
+
 
         self.multi_loss_val = {}
-        for task in tasks:
+        for task in self.tasks:
             if task == 'd':
                 loss = l1_loss_from_laplace
             elif task == 'ori':
@@ -88,6 +105,7 @@ class CompositeLoss(torch.nn.Module):
             else:
                 loss = nn.L1Loss()
             self.multi_loss_val[task] = loss
+
 
     def forward(self):
         losses_tr = [self.multi_loss_tr[l] for l in self.tasks]

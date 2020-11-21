@@ -59,6 +59,13 @@ class Printer:
         self.pos_pred = [xx[0:3] for xx in dic_ann['xyz_pred']]
         self.pos_gt = [xx[0:3] for xx in dic_ann['xyz_real']]
 
+        
+        if "kps_3d_pred" in dic_ann.keys():
+            self.kps_3d_pred = dic_ann['kps_3d_pred']
+            #self.kps_3d_gt = dic_ann['kps_3d_gt']
+
+
+
         try:
             self.angles = dic_ann['angles_egocentric']
         except KeyError:
@@ -201,6 +208,46 @@ class Printer:
             fig.subplots_adjust(left=0.02, right=0.98, bottom=0, top=1, hspace=0, wspace=0.02)
 
             figures.append(fig)
+
+        elif '3d_visu' in self.output_types:
+            assert 'bird' and 'front' not in self.output_types, \
+                "combined figure cannot be print together with front or bird ones"
+
+            self.y_scale = self.width / (self.height * 2)  # Defined proportion
+            if self.y_scale < 0.95 or self.y_scale > 1.05:  # allows more variation without resizing
+                self.im = self.im.resize((self.width, round(self.height * self.y_scale)))
+            self.width = self.im.size[0]
+            self.height = self.im.size[1]
+            fig_width = self.fig_width + 0.6 * self.fig_width
+
+            fig_height = 2 * self.fig_width * self.height / self.width
+
+            # Distinguish between KITTI images and general images
+            fig_ar_1 = 0.8
+            width_ratio = 1.9
+            self.extensions.append('.3d_visu.png')
+
+            fig = plt.figure(figsize=(fig_width, fig_height))
+            gs = fig.add_gridspec(2, 2, figure=fig, width_ratios=[2, 2], height_ratios=[1.25,1])
+
+            ax0 = fig.add_subplot(gs[0,:])
+            ax1 = fig.add_subplot(gs[1,0])
+            ax2 = ax0
+            ax3 = fig.add_subplot(gs[1,1],projection='3d')
+            #fig, (ax0s, ax1s) = plt.subplots(2, 2, sharey=False, gridspec_kw={'width_ratios': },1                               figsize=(fig_width, fig_height))
+
+            
+            """ax0, ax1 = ax0s
+            ax2, ax3 = ax1s
+            ax3.remove()
+            ax3 = fig.add_subplot(2,2,4,projection='3d')"""
+
+            ax1.set_aspect(fig_ar_1)
+            fig.set_tight_layout(True)
+            fig.subplots_adjust(left=0.02, right=0.98, bottom=0, top=1, hspace=0, wspace=0.02)
+
+            figures.append(fig)
+
         elif 'combined' in self.output_types:
             assert 'bird' and 'front' not in self.output_types, \
                 "combined figure cannot be print together with front or bird ones"
@@ -239,7 +286,7 @@ class Printer:
             figures.append(fig0)
 
         # Create front figure axis
-        if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps']):
+        if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             ax0 = self.set_axes(ax0, axis=0)
 
             divider = make_axes_locatable(ax0)
@@ -261,11 +308,11 @@ class Printer:
             fig1, ax1 = plt.subplots(1, 1)
             fig1.set_tight_layout(True)
             figures.append(fig1)
-        if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps']):
+        if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             ax1 = self.set_axes(ax1, axis=1)  # Adding field of view
             axes.append(ax1)
 
-        if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps']):
+        if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             ax2 =self.set_axes(ax2, axis = 2)
             ax3 =self.set_axes(ax3, axis = 3)
             axes.append(ax2)
@@ -277,7 +324,7 @@ class Printer:
              save=False, show=False, kps=None):
 
         keypoints = []
-        if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps']):
+        if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             _, _, pifpaf_out = kps[:]
             
             for pifpaf_o in pifpaf_out:
@@ -299,7 +346,7 @@ class Printer:
         num = 0
         self.mpl_im0.set_data(image)
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps']) and self.zz_pred[idx] > 0:
+            if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
 
                 color = self.cmap((self.zz_pred[idx] % self.z_max) / self.z_max)
                 #color = 'red'
@@ -314,7 +361,7 @@ class Printer:
         # Draw the bird figure
         num = 0
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps']) and self.zz_pred[idx] > 0:
+            if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
 
                 # Draw ground truth and uncertainty
                 self.draw_uncertainty(axes, idx)
@@ -327,18 +374,24 @@ class Printer:
 
         previous_idx = []
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps']):
+            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
                 #self.draw_keypoints(axes, keypoints[idx], idx)
                 previous_idx.append(idx)
                 self.draw_3d_visu(axes, idx)
 
+        for idx in iterator:
+            if any(xx in self.output_types for xx in [ '3d_visu']):
+                self.draw_3d_scatter(axes, idx, color = 'blue')
+                
+        
+
         for idx, keypoint in enumerate(keypoints):
-            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps']):
+            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', '3d_visu']):
                     self.draw_keypoints(axes, keypoint, idx)
                     
 
         for idx, keypoint in enumerate(keypoints):
-            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps']):
+            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
                     if idx not in previous_idx:
                         self.draw_3d_visu(axes, idx, color = 'red')
                         #self.draw_missing_pos(axes, idx)
@@ -380,15 +433,28 @@ class Printer:
         if z< self.z_max:
             vertices_r = project(T, scale, vertices )
             #ax.set_title('car_type: '+data['car_type'])
-            axes[3].set_xlim([-20, 20])
-            axes[3].set_ylim([0, self.z_max])
-            axes[3].set_zlim([0, 10])
-            axes[3].set_xlabel("X")
-            axes[3].set_ylabel("Y")
-            axes[3].set_zlabel("Z")
+           
             axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
 
+        axes[3].set_xlim([-20, 20])
+        axes[3].set_ylim([0, self.z_max])
+        axes[3].set_zlim([0, 10])
+        axes[3].set_xlabel("X")
+        axes[3].set_ylabel("Y")
+        axes[3].set_zlabel("Z")
 
+    def draw_3d_scatter(self, axes, idx, color = 'grey'):
+
+        if self.zz_pred[idx]< self.z_max:
+            
+            axes[3].scatter(self.kps_3d_pred[idx][0], self.kps_3d_pred[idx][2] , self.kps_3d_pred[idx][1] - np.mean(self.kps_3d_pred[idx][1]),color=color)
+
+        axes[3].set_xlim([-20, 20])
+        axes[3].set_ylim([0, self.z_max])
+        axes[3].set_zlim([0, 10])
+        axes[3].set_xlabel("X")
+        axes[3].set_ylabel("Y")
+        axes[3].set_zlabel("Z")
 
     def draw_uncertainty(self, axes, idx):
 
@@ -436,7 +502,7 @@ class Printer:
 
     def draw_missing_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""
-        if self.zz_pred[idx]<=self.z_max:
+        if self.zz_pred[idx]<=self.z_max and self.zz_pred != 0:
             print(self.zz_pred[idx])
             angle = get_angle(self.xx_pred[idx], self.zz_pred[idx])
             ellipse_ale = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_ale[idx] * 2,

@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from ..utils import correct_angle, normalize_hwl, pixel_to_camera, to_spherical #,append_cluster
 
-from ..network.process import preprocess_monoloco, keypoints_dropout
+from ..network.process import preprocess_monoloco, keypoints_dropout, clear_keypoints
 
 from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, set_logger
 
@@ -128,7 +128,6 @@ class PreprocessApolloscape:
                          "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {} \nKeypoints 3D: {}".format(dir_ann, process_mode, dropout, confidence, self.kps_3d))
 
 
-        
         self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')
         self.path_names = os.path.join(dir_out, 'names-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')
 
@@ -194,30 +193,45 @@ class PreprocessApolloscape:
 
     
                 self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
-                self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list)
+                
                 self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
                 self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
 
-                
+                ys_list_final = []
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
                     kps = [kps.transpose().tolist()]                    
                     
 
-                    kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout)
+                    kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout, kps_3d = self.kps_3d)
                     occluded_keypoints[phase].append(occ_kps)
                     inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d, confidence =self.confidence).view(-1).tolist()
                     
+                    if self.kps_3d:
+                        keypoints = clear_keypoints(kps, 3)
+                        z = (keypoints[:, 2, :]).tolist()[0]
+                        #print("Z", z)
+                        ys = list(ys)
+                        ys.append(z)
+                        ys_list_final.append(ys)
+                        #print("YS NEW", ys)
+                        #raise ValueError
+
                     self.dic_jo[phase]['kps'].append(kps.tolist())
                     self.dic_jo[phase]['X'].append(list(inp))
-                    self.dic_jo[phase]['Y'].append(list(ys))
+                    self.dic_jo[phase]['Y'].append(ys)
                     self.dic_jo[phase]['names'].append(scene_id+".jpg")  # One image name for each annotation
                     self.dic_jo[phase]['boxes_3d'].append(list(boxes_3d))
                     self.dic_jo[phase]['K'].append(intrinsic_vec_to_mat(kk).tolist())
                     
-                    append_cluster(self.dic_jo, phase, list(inp), list(ys), kps.tolist())
+                    append_cluster(self.dic_jo, phase, list(inp), ys, kps.tolist())
                     cnt_ann += 1
                     sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_ann) + '\t')
+
+                
+                self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
+
+
         with open(os.path.join(self.path_joints), 'w') as f:
             json.dump(self.dic_jo, f)
         with open(os.path.join(self.path_names), 'w') as f:

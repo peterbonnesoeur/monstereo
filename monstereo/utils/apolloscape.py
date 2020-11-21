@@ -320,6 +320,16 @@ def keypoint_expander(vertices_2d, keypoints, buffer = 100, kps_3d = True) :
         
     return np.array(new_keypoints)
 
+def keypoint_projection(keypoints_3D_img, intrinsic_matrix) :
+        #take the keypoints in the 2D space form the ground truth and reproject them in the 3D space.
+    intrinsic_matrix = np.array(intrinsic_matrix)
+    keypoints_3D_img = np.array(keypoints_3D_img)
+    keypoints_3D_img[:,1] = keypoints_3D_img[:,1] *keypoints_3D_img[:,3]
+    keypoints_3D_img[:,2] = keypoints_3D_img[:,2] *keypoints_3D_img[:,3]
+    keypoints_3D = np.matmul(np.array(keypoints_3D_img)[:,1:], np.linalg.pinv(intrinsic_matrix.transpose())) # The firs element is the index of the keypoints
+    return np.array( keypoints_3D)
+
+
 def keypoints_to_cad_model(keypoints, vertices_cad_dic, radius = 160):
     # Associate for each CAD model a set of keypoints
     keypoints_to_cad = {}

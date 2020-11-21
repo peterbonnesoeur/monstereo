@@ -5,7 +5,6 @@
 #SBATCH --ntasks             1
 #SBATCH --cpus-per-task      8
 #SBATCH --partition gpu  
-#SBATCH --reservation=vita-2020-11 
 #SBATCH --qos gpu 
 #SBATCH --gres gpu:1
 #SBATCH --time 24:00:00
@@ -16,143 +15,147 @@ args=''
 export dropout='0'
 dropout='0'
 
-export process_mode='NULL_ISNT_IT'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='neg'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='mean'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='mean_std'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-
 args='--confidence'
 
 export process_mode='NULL_ISNT_IT'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='neg'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='mean'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='mean_std'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 args=''
+
+export process_mode='NULL_ISNT_IT'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='neg'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='mean'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='mean_std'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+
+
 
 
 export dropout='0.3'
 dropout='0.3'
 
-export process_mode='NULL_ISNT_IT'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='neg'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='mean'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
-export process_mode='mean_std'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-
 args='--confidence'
 
 export process_mode='NULL_ISNT_IT'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='neg'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='mean'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
 export process_mode='mean_std'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+
+
+args=''
+
+export process_mode='NULL_ISNT_IT'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='neg'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='mean'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+
+export process_mode='mean_std'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_loose ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations_full ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_loose ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
+    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car_full ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"

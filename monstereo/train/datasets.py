@@ -46,14 +46,18 @@ class KeypointsDataset(Dataset):
     Dataloader from nuscenes or kitti datasets
     """
 
-    def __init__(self, joints, phase):
+    def __init__(self, joints, phase, kps_3d = False):
         """
         Load inputs and outputs from the pickles files from gt joints, mask joints or both
         """
         assert(phase in ['train', 'val', 'test'])
 
+        print("IN DATALOADER")
         with open(joints, 'r') as f:
             dic_jo = json.load(f)
+
+        self.kps_3d = kps_3d
+
 
         
         # Define input and output for normal training and inference
@@ -61,10 +65,27 @@ class KeypointsDataset(Dataset):
         """print(len(self.inputs_all))
         print(len(self.inputs_all[0]))
         print(self.inputs_all[0][0])"""
-        self.outputs_all = torch.tensor(dic_jo[phase]['Y'])
-        """print(len(self.outputs_all))
+
+        glob_list = []
+        if self.kps_3d:
+            for car_object in dic_jo[phase]['Y']:
+
+                local_list=[]
+                for item in car_object:
+                    if isinstance(item, list):
+                        for kp in item:
+                            local_list.append(kp)
+                    else:
+                        local_list.append(item)
+                glob_list.append(local_list)
+            dic_jo[phase]['Y'] = glob_list
+
+        #print("GLOABL LIST", glob_list[:5])
+
+        self.outputs_all = torch.tensor(dic_jo[phase]['Y'] )
+        print(len(self.outputs_all))
         print(len(self.outputs_all[0]))
-        print(self.outputs_all[0][0])"""
+        print(self.outputs_all[0][0])
         self.names_all = dic_jo[phase]['names']
         self.kps_all = torch.tensor(dic_jo[phase]['kps'])
         # Extract annotations divided in clusters
@@ -100,6 +121,22 @@ class KeypointsDataset(Dataset):
             return None, None, None
 
         inputs = torch.tensor(self.dic_clst[clst]['X'])
+
+        glob_list = []
+
+        if self.kps_3d:
+            for car_object in self.dic_clst[clst]['Y']:
+
+                local_list=[]
+                for item in car_object:
+                    if isinstance(item, list):
+                        for kp in item:
+                            local_list.append(kp)
+                    else:
+                        local_list.append(item)
+                glob_list.append(local_list)
+            self.dic_clst[clst]['Y'] = glob_list
+
         outputs = torch.tensor(self.dic_clst[clst]['Y']).float()
         count = len(self.dic_clst[clst]['Y'])
 

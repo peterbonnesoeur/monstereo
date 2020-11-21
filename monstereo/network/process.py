@@ -105,17 +105,21 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     
     kps_out = kps_norm[:, :, 0:2]
     #print("after removal", kps_out)
-    if kps_3d:
-        kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
+
+    #if kps_3d:
+    #    kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
+
     #print("WITH KPS_3D", kps_out)
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :].unsqueeze(-1)), dim=2)
         
-    #print("WITH conf", kps_out)
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
     #print("after flattening", kps_out)
-    #raise ValueError
-    return kps_out
+
+
+
+    return kps_out#, keypoints[:, 2, :]
+
 
 
 
@@ -331,7 +335,7 @@ def image_transform(image):
     return transforms(image)
 
 
-def extract_outputs(outputs, tasks=()):
+def extract_outputs(outputs, tasks=(), kps_3d = False):
     """
     Extract the outputs for multi-task training and predictions
     Inputs:
@@ -346,15 +350,37 @@ def extract_outputs(outputs, tasks=()):
                'h': outputs[:, 4],
                'w': outputs[:, 5],
                'l': outputs[:, 6],
-               'ori': outputs[:, 7:9]}
+               'ori': outputs[:, 7:9],
+               }
 
     if outputs.shape[1] == 10:
         dic_out['aux'] = outputs[:, 9:10]
+    
+    if kps_3d:
+        #print("KPS_*D HERE")
+        #! CHECK HERE
+        dic_out['z_kps'] = outputs[:,-24:]
+        if outputs.shape[1] == 10+24:
+            dic_out['aux'] = outputs[:, 9:10]
+
+        #print("Output Z_KPS", dic_out['z_kps']  )
+
+        if len(tasks)>1 and "z_kp0" in tasks:
+            for i in range(24):
+               dic_out['z_kp'+str(i)] = outputs[:, -24+i:]
+                #for i, z_kp in enumerate(dic_out['z_kps']):
+                #    dic_out['z_kp'+str(i)] = z_kp
+        
 
     # Multi-task training
     if len(tasks) >= 1:
+    
         assert isinstance(tasks, tuple), "tasks need to be a tuple"
         return [dic_out[task] for task in tasks]
+        """except KeyError:
+            print("TASK LIST extract", tasks)
+            print("Keypoints key list", dic_out.keys())
+            print("DIC_OUT", dic_out)"""
 
     # Preprocess the tensor
     # AV_H, AV_W, AV_L, HWL_STD = 1.72, 0.75, 0.68, 0.1
@@ -378,7 +404,9 @@ def extract_outputs(outputs, tasks=()):
 
     if outputs.shape[1] == 10:
         dic_out['aux'] = torch.sigmoid(dic_out['aux'])
-
+    
+    if outputs.shape[1] == 11 and kps_3d:
+        dic_out['aux'] = torch.sigmoid(dic_out['aux'])
     return dic_out
 
 
@@ -394,15 +422,32 @@ def extract_labels_aux(labels, tasks=None):
     return dic_gt_out
 
 
-def extract_labels(labels, tasks=None):
+def extract_labels(labels, tasks=None, kps_3d = False):
 
     dic_gt_out = {'x': labels[:, 0:1], 'y': labels[:, 1:2], 'z': labels[:, 2:3], 'd': labels[:, 3:4],
                   'h': labels[:, 4:5], 'w': labels[:, 5:6], 'l': labels[:, 6:7],
                   'ori': labels[:, 7:9], 'aux': labels[:, 10:11]}
 
+    if kps_3d:
+        dic_gt_out['z_kps'] = labels[:, -24:]
+        #print("LABELS Z_KPS", dic_gt_out['z_kps'] )
+
+        if tasks is not None and "z_kp0" in tasks:
+                #for i, z_kp in enumerate(dic_gt_out['z_kps']):
+                #    dic_gt_out['z_kp'+str(i)] = z_kp
+                for i in range(24):
+                    dic_gt_out['z_kp'+str(i)] = labels[:, -24+i:]
+
     if tasks is not None:
-        assert isinstance(tasks, tuple), "tasks need to be a tuple"
-        return [dic_gt_out[task] for task in tasks]
+        try:
+
+            assert isinstance(tasks, tuple), "tasks need to be a tuple"
+            #raise KeyError
+            return [dic_gt_out[task] for task in tasks]
+        except KeyError:
+            print("TASK LIST extract", tasks)
+            print("Keypoints key list", dic_gt_out.keys())
+            print("DIC_OUT", dic_gt_out)
 
     dic_gt_out = {key: el.detach().cpu() for key, el in dic_gt_out.items()}
 
@@ -475,7 +520,12 @@ def extract_outputs_mono(outputs, tasks=None):
     return dic_out
 
 
-def keypoints_dropout(keypoints, dropout = 0 ,nb_dim =2):
+def keypoints_dropout(keypoints, dropout = 0 ,nb_dim =2, kps_3d = False):
+
+    if kps_3d:
+        nb_dim = 3
+    else:
+        nb_dim = 2
 
     length_keypoints = 0
     occluded_kps = []

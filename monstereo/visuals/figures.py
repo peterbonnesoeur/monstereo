@@ -309,9 +309,9 @@ def printing_styles(stereo):
         style = {"labels": ['3DOP', 'MonoGRNet', 'Monoloco++', 'MonoDis', 'Pseudo-Lidar', 'MonStereo', 'Mono3D', 'Smoke'],
                  "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis', 'pseudo-lidar', 'monstereo', 'm3d', 'smoke'],
                  "mks": ['s', 'p', 'o', 'v', '*', '^', '.', '^'],
-                 "mksizes": [6, 6, 6, 6, 6, 6, 6,6], "lws": [1.2, 1.2, 1.2, 1.2, 1.3, 1.5, 1.3, 1.2],
+                 "mksizes": [6, 6, 7, 6, 6, 6, 6,6], "lws": [1.2, 1.2, 1.5, 1.2, 1.2, 1.2, 1.2, 1.2],
                  "colors": ['gold', 'skyblue', 'darkgreen', 'pink', 'darkorange', 'b', 'olive', 'darkblue'],
-                 "lstyles": ['solid', 'solid', 'dashed', 'dashed', 'solid', 'solid', 'solid', 'solid']}
+                 "lstyles": ['solid', 'solid', 'dashed', 'solid', 'solid', 'solid', 'solid', 'solid']}
     else:
         style = {"labels": ['Mono3D', 'Geometric Baseline', 'MonoPSR', '3DOP (stereo)', 'MonoLoco', 'Monoloco++'],
                  "methods": ['m3d', 'geometric', 'monopsr', '3dop', 'monoloco', 'monoloco_pp'],

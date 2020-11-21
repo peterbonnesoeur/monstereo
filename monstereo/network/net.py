@@ -11,7 +11,7 @@ from collections import defaultdict
 
 import torch
 
-from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance
+from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
     filter_outputs, cluster_outputs, unnormalize_bi
 from .architectures import MonolocoModel, SimpleModel
@@ -46,7 +46,7 @@ class Loco:
                     input_size=24*3*2
 
                 if self.kps_3d:
-                    output_size = 24
+                    output_size = 24+10
                 else:
                     output_size = 10
             
@@ -69,9 +69,9 @@ class Loco:
                     input_size=24*3
 
                 if self.kps_3d:
-                    output_size = 24
+                    output_size = 24+9
                 else:
-                    output_size = 9       
+                    output_size = 9    
         else:
             input_size = 34
             output_size = 2
@@ -82,7 +82,6 @@ class Loco:
             self.device = device
         self.n_dropout = n_dropout
         self.epistemic = bool(self.n_dropout > 0)
-
         # if the path is provided load the model parameters
         if isinstance(model, str):
             model_path = model
@@ -126,7 +125,7 @@ class Loco:
             elif self.net == 'monoloco_pp':
                 inputs = preprocess_monoloco(keypoints, kk, kps_3d = self.kps_3d, confidence = self.confidence)
                 outputs = self.model(inputs)
-                dic_out = extract_outputs(outputs)
+                dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:
                 if keypoints_r:
@@ -182,12 +181,38 @@ class Loco:
         return varss
 
     @staticmethod
-    def post_process(dic_in, boxes, keypoints, kk, dic_gt=None, iou_min=0.3, reorder=True, verbose=False):
+    def post_process(dic_in, boxes, keypoints, kk, dic_gt=None, iou_min=0.3, reorder=True, verbose=False, kps_3d = False):
         """Post process monoloco to output final dictionary with all information for visualizations"""
 
         dic_out = defaultdict(list)
         if dic_in is None:
             return dic_out
+
+        
+
+
+        if kps_3d:
+            print("HERE")
+            kps = torch.tensor(keypoints)
+            z_kps_pred = torch.tensor(dic_in['z_kps'])
+            
+            print("KPS",kps.size())
+            print("DIC_IN",z_kps_pred.size())
+            
+            keypoints_pred = torch.cat((kps[:,:2,:],z_kps_pred.unsqueeze(1)), dim =1)
+            print(keypoints_pred.size())
+            print(keypoints_pred.permute(0,2,1)[1])
+            kps_3d_pred = keypoint_projection(keypoints_pred.permute(0,2,1).tolist(), kk)
+
+            
+            #print("DIC_GT",z_kps_gt.size())
+            
+
+            #kps_3d_gts = keypoint_projection(keypoints_pred, kk)
+            #keypoints_gt = np.hstack(keypoints,dic_gt['ys'][:,-1])
+            
+            
+            #kps_out = torch.cat((inputs, torch.tensor(dic_in['z_kps']).unsqueeze(-1)), dim=2)
 
         if dic_gt:
             boxes_gt = dic_gt['boxes']
@@ -252,6 +277,10 @@ class Loco:
             dic_out['uv_shoulders'].append(uv_shoulder)
             dic_out['uv_heads'].append(uv_head)
 
+            if kps_3d:
+                dic_out['kps_3d_pred'].append(kps_3d_pred[idx])
+                #if idx in matches:
+                #    z_kps_gt = torch.tensor([el[-1] for el in dic_gt['ys']])
             # For MonStereo / MonoLoco++
             try:
                 dic_out['angles'].append(float(dic_in['yaw'][0][idx]))  # Predicted angle

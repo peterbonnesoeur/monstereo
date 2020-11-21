@@ -105,16 +105,31 @@ class Trainer:
             torch.cuda.manual_seed(r_seed)
 
         # Remove auxiliary task if monocular
-        if self.monocular and self.tasks[-1] == 'aux':
-            self.tasks = self.tasks[:-1]
-            self.lambdas = self.lambdas[:-1]
+        print("KPS_3D", self.kps_3d)
+        if self.kps_3d:
+            list_tasks = list(self.tasks)
+            if self.monocular and self.tasks[-1] == 'aux':
+                self.tasks = tuple(list(self.tasks[:-1]) +['z_kps'])
+                self.lambdas = list(self.lambdas[:-1]) + [1]
+            else:
+                self.tasks = tuple(list(self.tasks) +['z_kps'])
+                self.lambdas = list(self.lambdas) + [1]
 
-        losses_tr, losses_val = CompositeLoss(self.tasks)()
+            #print("TASKS", self.tasks)
+            #print("LAMBDAS", self.lambdas)
+
+        else:
+            if self.monocular and self.tasks[-1] == 'aux':
+                self.tasks = self.tasks[:-1]
+                self.lambdas = self.lambdas[:-1]
+
+
+        losses_tr, losses_val = CompositeLoss(self.tasks, self.kps_3d)()
 
         if self.auto_tune_mtl:
-            self.mt_loss = AutoTuneMultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks)
+            self.mt_loss = AutoTuneMultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
         else:
-            self.mt_loss = MultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks)
+            self.mt_loss = MultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
         self.mt_loss.to(self.device)
 
         if not self.monocular:
@@ -126,7 +141,7 @@ class Trainer:
                     input_size = 24*3*2
 
                 if self.kps_3d:
-                    output_size = 24
+                    output_size = 24 + 10
                 else:
                     output_size = 10
             else:
@@ -142,7 +157,7 @@ class Trainer:
                     input_size = 24*3
 
                 if self.kps_3d:
-                    output_size = 24
+                    output_size = 9 + 24
                 else:
                     output_size = 9
             else:
@@ -152,6 +167,9 @@ class Trainer:
                     input_size = 17*3
 
                 output_size = 9
+
+                if self.kps_3d:
+                    output_size = 9+24
 
         print("input size : ",input_size, "\noutput size : ", output_size )
         now = datetime.datetime.now()
@@ -182,10 +200,9 @@ class Trainer:
             self.logger = logging.getLogger(__name__)
 
         # Dataloader
-        self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase),
+        self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d),
                                               batch_size=bs, shuffle=True) for phase in ['train', 'val']} #the drop_last flag is only there to forget the latest value o the dataset in case of a batch normalization where we don't have more than 1 input in the batch
-        #print("HERE")
-        self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase))
+        self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d))
                               for phase in ['train', 'val']}
 
         # Define the model
@@ -282,8 +299,9 @@ class Trainer:
         self.model.eval()
         dic_err = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))  # initialized to zero
         self.errors = defaultdict(list)
+        self.errors_kps = defaultdict(list)
         dic_err['val']['sigmas'] = [0.] * len(self.tasks)
-        dataset = KeypointsDataset(self.joints, phase='val')
+        dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d)
         size_eval = len(dataset)
         start = 0
         with torch.no_grad():
@@ -339,14 +357,25 @@ class Trainer:
         rel_frac = outputs.size(0) / size_eval
         print(outputs.size(0) , size_eval)
         tasks = self.tasks[:-1] if self.tasks[-1] == 'aux' else self.tasks  # Exclude auxiliary
+        if self.kps_3d:
+            errs_kps = torch.mean(torch.abs(extract_outputs(outputs, kps_3d=self.kps_3d)['z_kps'] - extract_labels(labels,  kps_3d=self.kps_3d)['z_kps']), dim =0)
+            #print("SIZE ERRS KPS",errs_kps.size())
+            #print("SIZE ERRS KPS No Mean",torch.abs(extract_outputs(outputs, kps_3d=self.kps_3d)['z_kps'] - extract_labels(labels,  kps_3d=self.kps_3d)['z_kps']).size())
+            for err_kps in errs_kps:
+                self.errors_kps[clst].append(err_kps)
+            dic_err[clst]['std_kps'] = errs_kps.std()
+            dic_err[clst]['mean_kps'] = errs_kps.mean()
+            tasks = self.tasks[:-2] if self.tasks[-2] == 'aux' else self.tasks[:-1]  # Exclude auxiliary and z_kps
+
 
         for idx, task in enumerate(tasks):
             dic_err[clst][task] += float(loss_values[idx].item()) * (outputs.size(0) / size_eval)
 
         # Distance 
         errs = torch.abs(extract_outputs(outputs)['d'] - extract_labels(labels)['d'])
+        
 
-        yaws = extract_outputs(outputs)['yaw'][0]
+        yaws = extract_outputs(outputs, kps_3d=self.kps_3d)['yaw'][0]
 
 
         for err,yaw in zip(errs,yaws):
@@ -358,6 +387,8 @@ class Trainer:
                 else:
                     if yaw<(-angle*np.pi/180):
                         break
+
+        
             if yaw>0:
                 self.dic_angles[str(angle)].append(err)
             else:
@@ -366,7 +397,7 @@ class Trainer:
         assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
-        bis = extract_outputs(outputs)['bi'].cpu()
+        bis = extract_outputs(outputs,  kps_3d=self.kps_3d)['bi'].cpu()
         bi = float(torch.mean(bis).item())
         bi_perc = float(torch.sum(errs <= bis)) / errs.shape[0]
         dic_err[clst]['bi'] += bi * rel_frac
@@ -423,14 +454,28 @@ class Trainer:
     def cout_stats(self, dic_err, size_eval, clst):
         if clst == 'all':
             print('-' * 120)
-            self.logger.info("Evaluation, val set: \nAv. dist D: {:.2f} m with bi {:.2f} ({:.1f}%), \n"
+
+            if self.kps_3d:
+                self.logger.info("Evaluation, val set: \nAv. dist D: {:.2f} m with bi {:.2f} ({:.1f}%), \n"
                              "X: {:.1f} cm,  Y: {:.1f} cm \nOri: {:.1f}  "
                              "\n H: {:.1f} cm, W: {:.1f} cm, L: {:.1f} cm"
+                             "\n Mean kps: {:.1f} m with an std of {:.5f} m"
                              "\nAuxiliary Task: {:.1f} %, "
                              .format(dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
                                      dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
                                      dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
-                                     dic_err[clst]['l'] * 100, dic_err[clst]['aux'] * 100))
+                                     dic_err[clst]['l'] * 100, dic_err[clst]['mean_kps'], dic_err[clst]['std_kps'],
+                                     dic_err[clst]['aux'] * 100))
+            else:
+
+                self.logger.info("Evaluation, val set: \nAv. dist D: {:.2f} m with bi {:.2f} ({:.1f}%), \n"
+                                "X: {:.1f} cm,  Y: {:.1f} cm \nOri: {:.1f}  "
+                                "\n H: {:.1f} cm, W: {:.1f} cm, L: {:.1f} cm"
+                                "\nAuxiliary Task: {:.1f} %, "
+                                .format(dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
+                                        dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
+                                        dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
+                                        dic_err[clst]['l'] * 100, dic_err[clst]['aux'] * 100))
 
             self.logger.info("Error for the distance depending on the angle\n")
 
@@ -447,13 +492,22 @@ class Trainer:
                                  " AUX:{:.2f}\n"
                                  .format(*dic_err['sigmas']))
         else:
-
-            self.logger.info("Val err clust {} --> D:{:.2f}m,  bi:{:.2f} ({:.1f}%), STD:{:.1f}m   X:{:.1f} Y:{:.1f}  "
-                             "Ori:{:.1f}d,   H: {:.0f} W: {:.0f} L:{:.0f}  for {} pp. "
-                             .format(clst, dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
-                                     dic_err[clst]['std'], dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
-                                     dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
-                                     dic_err[clst]['l'] * 100, size_eval))
+            
+            if self.kps_3d:
+                self.logger.info("Val err clust {} --> D:{:.2f}m,  bi:{:.2f} ({:.1f}%), STD:{:.1f}m   X:{:.1f} Y:{:.1f}  "
+                                "Ori:{:.1f}d,   H: {:.0f} W: {:.0f} L:{:.0f}  ,Mean kps: {:.1f} m with an std of {:.5f} m for {} pp. "
+                                .format(clst, dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
+                                        dic_err[clst]['std'], dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
+                                        dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
+                                        dic_err[clst]['l'] * 100, dic_err[clst]['mean_kps'], dic_err[clst]['std_kps'],
+                                        size_eval))
+            else:
+                self.logger.info("Val err clust {} --> D:{:.2f}m,  bi:{:.2f} ({:.1f}%), STD:{:.1f}m   X:{:.1f} Y:{:.1f}  "
+                                "Ori:{:.1f}d,   H: {:.0f} W: {:.0f} L:{:.0f}  for {} pp. "
+                                .format(clst, dic_err[clst]['d'], dic_err[clst]['bi'], dic_err[clst]['bi%'] * 100,
+                                        dic_err[clst]['std'], dic_err[clst]['x'] * 100, dic_err[clst]['y'] * 100,
+                                        dic_err[clst]['ori'], dic_err[clst]['h'] * 100, dic_err[clst]['w'] * 100,
+                                        dic_err[clst]['l'] * 100, size_eval))
 
             if self.dataset == 'apolloscape':
 
@@ -548,7 +602,6 @@ def show_box_plot(dic_errors, clusters, show=False, save=False, vehicles = False
         dir_out+=""
     excl_clusters = clusters[-1]
     clusters = [int(clst) for clst in clusters if (clst not in excl_clusters and clst in dic_errors.keys())]
-    print("END Clusters", clusters)
     y_min = 0
     y_max = 25  # 18 for the other
     xxs = get_distances(clusters)
