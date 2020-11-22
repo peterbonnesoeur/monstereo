@@ -13,7 +13,7 @@ import torch
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
-    filter_outputs, cluster_outputs, unnormalize_bi
+    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints
 from .architectures import MonolocoModel, SimpleModel
 
 
@@ -193,26 +193,40 @@ class Loco:
 
         if kps_3d:
             print("HERE")
-            kps = torch.tensor(keypoints)
+            kps = clear_keypoints(torch.tensor(keypoints))
+            
             z_kps_pred = torch.tensor(dic_in['z_kps'])
             
             print("KPS",kps.size())
             print("DIC_IN",z_kps_pred.size())
             
-            keypoints_pred = torch.cat((kps[:,:2,:],z_kps_pred.unsqueeze(1)), dim =1)
-            print(keypoints_pred.size())
-            print(keypoints_pred.permute(0,2,1)[1])
-            kps_3d_pred = keypoint_projection(keypoints_pred.permute(0,2,1).tolist(), kk)
+            
+            res = pixel_to_camera(kps[:, 0:2, :], kk, 1)
+            z_pred_mod = z_kps_pred.unsqueeze(2).repeat(1,1,3)
+            print("Z_pred_size", z_pred_mod.size())
+            print("res size", res.size())
 
-            
-            #print("DIC_GT",z_kps_gt.size())
-            
 
-            #kps_3d_gts = keypoint_projection(keypoints_pred, kk)
-            #keypoints_gt = np.hstack(keypoints,dic_gt['ys'][:,-1])
+            res = res*z_pred_mod
             
-            
-            #kps_out = torch.cat((inputs, torch.tensor(dic_in['z_kps']).unsqueeze(-1)), dim=2)
+            conf_kps = (kps[:,2,:]>0)  #select the  detected keypoints with a conf > 0
+            print("CONF_KPS",conf_kps)
+            print("conf size",conf_kps.size())
+            print("res size",res.size())
+            print("xyz met norm", res[0:3])
+
+            mask = conf_kps.unsqueeze(-1).repeat(1,1,3)
+
+            test = res.masked_fill(mask, 0) #put the non detected keypoints to 0
+ 
+            print(test.size())
+            print(test)
+
+            kps_3d_pred = res.tolist()
+
+
+            print("reference",dic_in['xyzd'])
+
 
         if dic_gt:
             boxes_gt = dic_gt['boxes']

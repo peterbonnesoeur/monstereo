@@ -82,7 +82,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
     #? The confidenc eparameters adds the confidence for the keypoints in the process.
     if kps_3d:
-        nb_dim = 3
+        nb_dim = 2
     else: 
         nb_dim = 2
     

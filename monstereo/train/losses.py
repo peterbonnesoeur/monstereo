@@ -82,7 +82,7 @@ class CompositeLoss(torch.nn.Module):
 
     def __init__(self, tasks, kps_3d = False):
         super(CompositeLoss, self).__init__()
-
+        print("HERE")
         self.tasks = tasks
         self.kps_3d = kps_3d
         if self.kps_3d:
@@ -90,7 +90,7 @@ class CompositeLoss(torch.nn.Module):
         #print("Tasks", tasks)
         self.multi_loss_tr = {task: (LaplacianLoss() if task == 'd'
                                      else (nn.BCEWithLogitsLoss() if task in ('aux', )
-                            
+                                        else nn.L1Loss()if "z_kp" in task 
                                            else nn.L1Loss())) for task in self.tasks}
 
 
@@ -100,11 +100,16 @@ class CompositeLoss(torch.nn.Module):
                 loss = l1_loss_from_laplace
             elif task == 'ori':
                 loss = angle_loss
+            elif 'z_kp' in task:
+                loss = nn.L1Loss()
             elif task in ('aux', ):
                 loss = nn.BCEWithLogitsLoss()
             else:
                 loss = nn.L1Loss()
             self.multi_loss_val[task] = loss
+
+        print(self.multi_loss_tr)
+        print(self.multi_loss_val)
 
 
     def forward(self):

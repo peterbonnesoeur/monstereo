@@ -61,7 +61,7 @@ class Printer:
 
         
         if "kps_3d_pred" in dic_ann.keys():
-            self.kps_3d_pred = dic_ann['kps_3d_pred']
+            self.kps_3d_pred = np.array(dic_ann['kps_3d_pred'])
             #self.kps_3d_gt = dic_ann['kps_3d_gt']
 
 
@@ -374,14 +374,21 @@ class Printer:
 
         previous_idx = []
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
+            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps']):
                 #self.draw_keypoints(axes, keypoints[idx], idx)
                 previous_idx.append(idx)
                 self.draw_3d_visu(axes, idx)
 
         for idx in iterator:
+            print("IN THERE 1")
             if any(xx in self.output_types for xx in [ '3d_visu']):
                 self.draw_3d_scatter(axes, idx, color = 'blue')
+
+        for idx, _ in enumerate(keypoints):
+            if idx not in previous_idx:
+                if any(xx in self.output_types for xx in [ '3d_visu']):
+                    print("IN THERE 2")
+                    self.draw_3d_scatter(axes, idx, color = 'green')
                 
         
 
@@ -393,9 +400,14 @@ class Printer:
         for idx, keypoint in enumerate(keypoints):
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
                     if idx not in previous_idx:
-                        self.draw_3d_visu(axes, idx, color = 'red')
+                        
                         #self.draw_missing_pos(axes, idx)
                         self.draw_missing_ellipses(axes, idx)
+
+        for idx, keypoint in enumerate(keypoints):
+            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
+                    if idx not in previous_idx:
+                        self.draw_3d_visu(axes, idx, color = 'red')
         if legend:
             draw_legend(axes)
             
@@ -445,9 +457,11 @@ class Printer:
 
     def draw_3d_scatter(self, axes, idx, color = 'grey'):
 
-        if self.zz_pred[idx]< self.z_max:
-            
-            axes[3].scatter(self.kps_3d_pred[idx][0], self.kps_3d_pred[idx][2] , self.kps_3d_pred[idx][1] - np.mean(self.kps_3d_pred[idx][1]),color=color)
+        print("KEYPOINTS ", self.kps_3d_pred[idx], idx)
+        if (self.zz_pred[idx]< self.z_max and self.zz_pred[idx]>0) :
+        
+            print("IN PRINTER", self.kps_3d_pred[idx])
+            axes[3].scatter(self.kps_3d_pred[idx][:,0], self.kps_3d_pred[idx][:,2] , self.kps_3d_pred[idx][:,1] - np.mean(self.kps_3d_pred[idx][:,1]  ),color=color)
 
         axes[3].set_xlim([-20, 20])
         axes[3].set_ylim([0, self.z_max])
@@ -496,13 +510,13 @@ class Printer:
                              color='k', label="Ground-truth", markersize=8, marker='x')
 
     def draw_missing_pos(self,axes, idx):
-        if self.zz_pred[idx]<=self.z_max:
+        if self.zz_pred[idx]<=self.z_max and self.zz_pred[idx] > 0:
             axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT", markersize=5, marker='o')
 
 
     def draw_missing_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""
-        if self.zz_pred[idx]<=self.z_max and self.zz_pred != 0:
+        if self.zz_pred[idx]<=self.z_max and self.zz_pred[idx] > 0:
             print(self.zz_pred[idx])
             angle = get_angle(self.xx_pred[idx], self.zz_pred[idx])
             ellipse_ale = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_ale[idx] * 2,
