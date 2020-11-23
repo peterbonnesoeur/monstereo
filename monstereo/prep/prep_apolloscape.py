@@ -198,6 +198,9 @@ class PreprocessApolloscape:
                 self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
 
                 ys_list_final = []
+                #print("length keypoints list",len(kps_list))
+
+                #print("length boxes gt list",len(boxes_gt_list))
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
                     kps = [kps.transpose().tolist()]                    
@@ -205,7 +208,7 @@ class PreprocessApolloscape:
 
                     kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout, kps_3d = self.kps_3d)
                     occluded_keypoints[phase].append(occ_kps)
-                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), kps_3d = self.kps_3d, confidence =self.confidence).view(-1).tolist()
+                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), confidence =self.confidence).view(-1).tolist()
                     
                     if self.kps_3d:
                         keypoints = clear_keypoints(kps, 3)
@@ -257,7 +260,7 @@ class PreprocessApolloscape:
     def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):
         with open(car_poses) as json_file:
             data = json.load(json_file) #open the pose of the cars
-
+        #print("NUMBER OF INSTANCES DETECTED BY PIFPAF", len(data))
         dic_vertices = {}
         dic_boxes = {}
         dic_poses = {}
@@ -285,11 +288,13 @@ class PreprocessApolloscape:
 
         new_keypoints = None
         
+        #print("LENGTH OF THE EXTRACTED POSES",len(dic_poses))
+        #print("LENGTH OF THE EXTRACTED vertices",len(dic_vertices))
         #  print("DIC_BOXES", dic_boxes)
                            
         if "sample" not in self.path:
                            
-            car_keypoints = os.path.join(self.path, "keypoints", scene_id)
+            #car_keypoints = os.path.join(self.path, "keypoints", scene_id)
             
             keypoints_list = []
             boxes_gt_list = []  # Countain the the 2D bounding box of the vehicles
@@ -298,19 +303,23 @@ class PreprocessApolloscape:
             car_model_list = []          
             
             keypoints_pifpaf = pifpaf_info_extractor(path_pif)
-            
+            #print("NUMBER OF KEYPOINTS of PIFPAF", len(keypoints_pifpaf))
+            #print("MAME OF THE FILE", scene_id)
             #Compute the similarity between each set of car models in the 3D space and the set of keypoints from in the 2D space
             for index_keypoints, keypoints in enumerate(keypoints_pifpaf):
-
+                #print("INDEX KEYPOINTS", index_keypoints)
                 dic_keypoints[index_keypoints] = keypoints
 
                 k_t_c, index_cad, count = keypoints_to_cad_model(keypoints, dic_vertices, radius = self.radius)
 
-                if index_cad not in vertices_to_keypoints.keys():
+                #print("INDEX_CAD, count", index_cad, count)
+                if index_cad not in vertices_to_keypoints.keys() and count >= 7:
                     vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
                 elif vertices_to_keypoints[index_cad][1] < count:
                     vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
             
+            #print("LENGTH OF VERTICES TO KEYPOINTS", len(vertices_to_keypoints))
+            #print("CURRENTLY USED RADIUS", self.radius)
             for index_cad, (index_keypoints, count, k_t_c) in vertices_to_keypoints.items()   :
 
                 if (index_cad != -1 and count >=1):
@@ -346,12 +355,14 @@ class PreprocessApolloscape:
                     else:
                         ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
                     
-                    car_model_list.append(dic_car_model[index_cad])
                     
+                    car_model_list.append(dic_car_model[index_cad])
+            #print("LENGTH OF YS_LIST", len(ys_list))     
             return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
         
         
         else:
+            print("HERE")
             for index_cad, _ in dic_vertices.items() :
                 
                 boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
