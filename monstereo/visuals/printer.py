@@ -62,6 +62,7 @@ class Printer:
         
         if "kps_3d_pred" in dic_ann.keys():
             self.kps_3d_pred = np.array(dic_ann['kps_3d_pred'])
+            self.kps_3d_conf = np.array(dic_ann['kps_3d_conf'])
             #self.kps_3d_gt = dic_ann['kps_3d_gt']
 
 
@@ -161,7 +162,7 @@ class Printer:
 
             
             """ax0, ax1 = ax0s
-            ax2, ax3 = ax1s
+            ax2, ax3 = ax1s  
             ax3.remove()
             ax3 = fig.add_subplot(2,2,4,projection='3d')"""
 
@@ -360,6 +361,7 @@ class Printer:
 
         # Draw the bird figure
         num = 0
+        
         for idx in iterator:
             if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
 
@@ -374,23 +376,22 @@ class Printer:
 
         previous_idx = []
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps']):
+            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
                 #self.draw_keypoints(axes, keypoints[idx], idx)
                 previous_idx.append(idx)
-                self.draw_3d_visu(axes, idx)
+                #self.draw_3d_visu(axes, idx)
 
+        for idx, keypoint in enumerate(keypoints):
+            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
+                    if idx not in previous_idx:
+                        self.draw_3d_visu(axes, idx, color = 'red')
+
+        #? Quick fix for a previous problem. Will be moidifeid in due time
         for idx in iterator:
-            print("IN THERE 1")
-            if any(xx in self.output_types for xx in [ '3d_visu']):
-                self.draw_3d_scatter(axes, idx, color = 'blue')
-
-        for idx, _ in enumerate(keypoints):
-            if idx not in previous_idx:
-                if any(xx in self.output_types for xx in [ '3d_visu']):
-                    print("IN THERE 2")
-                    self.draw_3d_scatter(axes, idx, color = 'green')
-                
-        
+            if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
+                #self.draw_keypoints(axes, keypoints[idx], idx)
+                self.draw_3d_visu(axes, idx)
+                  
 
         for idx, keypoint in enumerate(keypoints):
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', '3d_visu']):
@@ -400,14 +401,25 @@ class Printer:
         for idx, keypoint in enumerate(keypoints):
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
                     if idx not in previous_idx:
-                        
                         #self.draw_missing_pos(axes, idx)
                         self.draw_missing_ellipses(axes, idx)
 
-        for idx, keypoint in enumerate(keypoints):
-            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
-                    if idx not in previous_idx:
-                        self.draw_3d_visu(axes, idx, color = 'red')
+
+
+
+
+
+
+        for idx, _ in enumerate(keypoints):
+            if idx not in previous_idx:
+                if any(xx in self.output_types for xx in [ '3d_visu']):
+                    #print("IN THERE 2")
+                    self.draw_3d_scatter(axes, idx, color = 'green')
+
+        for idx in iterator:
+            #print("IN THERE 1")
+            if any(xx in self.output_types for xx in [ '3d_visu']):
+                self.draw_3d_scatter(axes, idx, color = 'blue')
         if legend:
             draw_legend(axes)
             
@@ -457,11 +469,13 @@ class Printer:
 
     def draw_3d_scatter(self, axes, idx, color = 'grey'):
 
-        print("KEYPOINTS ", self.kps_3d_pred[idx], idx)
+        #print("KEYPOINTS ", self.kps_3d_pred[idx], idx)
         if (self.zz_pred[idx]< self.z_max and self.zz_pred[idx]>0) :
         
-            print("IN PRINTER", self.kps_3d_pred[idx])
-            axes[3].scatter(self.kps_3d_pred[idx][:,0], self.kps_3d_pred[idx][:,2] , self.kps_3d_pred[idx][:,1] - np.mean(self.kps_3d_pred[idx][:,1]  ),color=color)
+            mask = self.kps_3d_conf[idx]>0
+            #print("IN PRINTER", self.kps_3d_pred[idx])
+            #print("mask", mask)
+            axes[3].scatter(self.kps_3d_pred[idx][mask,0], self.kps_3d_pred[idx][mask,2] , self.kps_3d_pred[idx][mask,1] - np.mean(self.kps_3d_pred[idx][mask,1]  ),color=color)
 
         axes[3].set_xlim([-20, 20])
         axes[3].set_ylim([0, self.z_max])
@@ -517,7 +531,7 @@ class Printer:
     def draw_missing_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""
         if self.zz_pred[idx]<=self.z_max and self.zz_pred[idx] > 0:
-            print(self.zz_pred[idx])
+            #print(self.zz_pred[idx])
             angle = get_angle(self.xx_pred[idx], self.zz_pred[idx])
             ellipse_ale = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_ale[idx] * 2,
                                 height=1, angle=angle, color='orange', fill=False, label="Aleatoric Uncertainty without GT",
@@ -588,13 +602,11 @@ class Printer:
 
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
-            axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5,
-                        str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+            #axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
         else:
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] - 5,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
-            axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5,
-                        str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+            #axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
 
     def draw_circle(self, axes, uv, color):
 

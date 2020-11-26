@@ -80,11 +80,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
      Outputs =  torch tensors of (m, 72)/(m,96) in meters normalized (z=1) and zero-centered using the center of the box
     """
 
-    #? The confidenc eparameters adds the confidence for the keypoints in the process.
-    if kps_3d:
-        nb_dim = 2
-    else: 
-        nb_dim = 2
+    #? The confidence parameters adds the confidence for the keypoints in the process.
     
     if isinstance(keypoints, list):
         keypoints = torch.tensor(keypoints)
@@ -92,7 +88,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
         kk = torch.tensor(kk)
 
 
-    keypoints = clear_keypoints(keypoints, nb_dim)
+    keypoints = clear_keypoints(keypoints, 2)
     # Projection in normalized image coordinates and zero-center with the center of the bounding box
     
     xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
@@ -111,7 +107,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
     #print("WITH KPS_3D", kps_out)
     if confidence:
-        kps_out = torch.cat((kps_out, keypoints[:, nb_dim, :].unsqueeze(-1)), dim=2)
+        kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
         
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
     #print("after flattening", kps_out)
@@ -544,7 +540,7 @@ def keypoints_dropout(keypoints, dropout = 0 ,nb_dim =2, kps_3d = False):
         for j in kps_list:
             val = torch.rand(1)
             if val<dropout: #(keypoints[i,nb_dim, :]>0).sum() >= threshold and val<self.dropout: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-                keypoints[i, 0:nb_dim, j] = torch.tensor([-3]*nb_dim)
+                keypoints[i, 0:nb_dim, j] = torch.tensor([-5]*nb_dim)
                 keypoints[i, nb_dim, j] = torch.tensor(0)
 
         #print("NUM OCCLUDED ", (keypoints[i,nb_dim, :]<=0).sum() )

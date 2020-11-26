@@ -123,7 +123,7 @@ class Loco:
                 dic_out = extract_outputs_mono(outputs)
 
             elif self.net == 'monoloco_pp':
-                inputs = preprocess_monoloco(keypoints, kk, kps_3d = self.kps_3d, confidence = self.confidence)
+                inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
                 outputs = self.model(inputs)
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
@@ -188,44 +188,30 @@ class Loco:
         if dic_in is None:
             return dic_out
 
-        
-
-
         if kps_3d:
-            print("HERE")
             kps = clear_keypoints(torch.tensor(keypoints))
             
-            z_kps_pred = torch.tensor(dic_in['z_kps'])
+            z_kps_pred = torch.tensor(dic_in['z_kps']).unsqueeze(2).repeat(1,1,3) # Z component repeated for the projection
             
-            print("KPS",kps.size())
-            print("DIC_IN",z_kps_pred.size())
+            #print("KPS",kps.size())
+            #print("DIC_IN",z_kps_pred.size())
             
             
             res = pixel_to_camera(kps[:, 0:2, :], kk, 1)
-            z_pred_mod = z_kps_pred.unsqueeze(2).repeat(1,1,3)
-            print("Z_pred_size", z_pred_mod.size())
-            print("res size", res.size())
+            #z_pred_mod = z_kps_pred.unsqueeze(2).repeat(1,1,3)
+            #print("Z_pred_size", z_pred_mod.size())
+            #print("res size", res.size())
 
 
-            res = res*z_pred_mod
+            res = res*z_kps_pred
             
-            conf_kps = (kps[:,2,:]>0)  #select the  detected keypoints with a conf > 0
-            print("CONF_KPS",conf_kps)
-            print("conf size",conf_kps.size())
-            print("res size",res.size())
-            print("xyz met norm", res[0:3])
-
-            mask = conf_kps.unsqueeze(-1).repeat(1,1,3)
-
-            test = res.masked_fill(mask, 0) #put the non detected keypoints to 0
- 
-            print(test.size())
-            print(test)
+            conf_kps = kps[:,2,:].tolist()  #select the  detected keypoints with a conf > 0
+            #print("CONF_KPS",conf_kps)
+            #print("conf size",conf_kps.size())
+            #print("res size",res.size())
+            #print("xyz met norm", res[0:3])
 
             kps_3d_pred = res.tolist()
-
-
-            print("reference",dic_in['xyzd'])
 
 
         if dic_gt:
@@ -293,6 +279,8 @@ class Loco:
 
             if kps_3d:
                 dic_out['kps_3d_pred'].append(kps_3d_pred[idx])
+                dic_out['kps_3d_conf'].append(conf_kps[idx])
+
                 #if idx in matches:
                 #    z_kps_gt = torch.tensor([el[-1] for el in dic_gt['ys']])
             # For MonStereo / MonoLoco++

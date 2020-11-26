@@ -8,6 +8,7 @@ import torch
 import numpy as np
 
 from collections import namedtuple
+from .iou import calculate_iou
 import numpy as np
 
 #Clusters for apolloscape:
@@ -269,9 +270,10 @@ def car_projection( car_model, scale , T, turn_over = False, bbox= False):
         if bbox:
             bbox_3d, w, l, h= bbox_3d_extract(vertices)
             bbox_3d_r = project(T, scale, bbox_3d)      # Place the bounding box at its place in the 3D space
-            
             results = vertices_r, triangles, bbox_3d_r, w, l, h
-        
+        else:
+            bbox_3d, w, l, h= bbox_3d_extract(vertices)
+            results = vertices_r, triangles, bbox_3d, w, l, h
         return results
 
 def pifpaf_info_extractor(json_pifpaf):
@@ -316,7 +318,10 @@ def keypoint_expander(vertices_2d, keypoints, buffer = 100, kps_3d = True) :
         z = np.min(vertices_2d[np.argsort(dist)[0:buffer], 2])
         
         
-        new_keypoints.append([keypoint[0], keypoint[1], keypoint[2], z])
+        if keypoint[0]==0:
+            new_keypoints.append([keypoint[0], keypoint[1], keypoint[2], -5])
+        else:
+            new_keypoints.append([keypoint[0], keypoint[1], keypoint[2], z])
         
     return np.array(new_keypoints)
 
@@ -330,37 +335,51 @@ def keypoint_projection(keypoints_3D_img, intrinsic_matrix) :
     return np.array( keypoints_3D)
 
 
-def keypoints_to_cad_model(keypoints, vertices_cad_dic, radius = 160):
-    # Associate for each CAD model a set of keypoints
-    keypoints_to_cad = {}
-    num_keypoints = len(keypoints)
-    if len(keypoints.shape) == 1:
-        keypoints = [keypoints]
+def get_iou_matches_custom(boxes, boxes_gt, iou_min=0.3):
+    """From 2 sets of boxes and a minimum threshold, compute the matching indices for IoU matches"""
+
+    matches = []
+    used = []
+    if not boxes or not boxes_gt:
+        return []
+    confs = [box[4] for box in boxes]
+
+    indices = list(np.argsort(confs))
+    for idx in indices[::-1]:
+        box = boxes[idx]
+        ious = []
+        for idx_gt, box_gt in enumerate(boxes_gt):
+            iou = calculate_iou(box, box_gt)
+            ious.append(iou)
+        idx_gt_max = int(np.argmax(ious))
+        if (ious[idx_gt_max] >= iou_min) and (idx_gt_max not in used):
+            matches.append((idx, idx_gt_max))
+            used.append(idx_gt_max)
+    return matches, ious
+
+def keypoints_to_cad_model(keypoints, vertices_cad_dic, iou = 0.3):
     
+    #print(keypoints)
     
+    kps = keypoints[keypoints[:,0]>0][:, 1:]
+    conf = np.sum(keypoints[:,0])
+    box_kp = [min(kps[:,0]), min(kps[:,1]),max(kps[:,0]), max(kps[:,1]), conf ]
+    #print(box_kp)
+    
+    boxes_gt = []
     for i, vertices_2d in vertices_cad_dic.items():
+        x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
+        #print(x,y,vertices_2d[:,2] )
+        boxes_gt.append([min(x),min(y), max(x), max(y)])
         
-        for j, keypoint in enumerate(keypoints):
-            
-            res = np.ones([len(vertices_2d),2])*keypoint[1:] - np.transpose([vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2]])
-            dist = np.min( np.linalg.norm(res, axis = 1 ))
-            
-            if i == 0 and dist < radius:
-                keypoints_to_cad[j] = [i, dist]
-            elif i == 0 and dist >= radius:
-                keypoints_to_cad[j] = [-1, np.infty]
-                
-            elif dist < keypoints_to_cad[j][1] and dist <= radius:
-                keypoints_to_cad[j] = [i, dist]
-                
+    matches, ious = get_iou_matches_custom([box_kp], boxes_gt, iou_min=iou)
     
-    count = 0
-    result = -1
+    #print(matches, ious, len(matches)) 
     
-    a = np.array( list( keypoints_to_cad.values()))[:,0]
-    index, counts = np.unique(a, return_counts=True)
-    
-    return keypoints_to_cad, index[np.argmax(counts)], np.max(counts)
+    if len(matches) == 0:
+        return None, 0.0
+    else:
+        return matches[0][1], np.max(ious)
 
 
 if __name__ == '__main__':
@@ -528,3 +547,48 @@ car_id2name = {label.id: label for label in models}
 
 
 
+"""
+
+def keypoints_to_cad_model_old(keypoints, vertices_cad_dic, radius = 160):
+    # Associate for each CAD model a set of keypoints
+    keypoints_to_cad = {}
+    num_keypoints = len(keypoints)
+    if len(keypoints.shape) == 1:
+        keypoints = [keypoints]
+    #print("\nIN keypoints_to_cad_model\n")
+    
+    #print(num_keypoints)
+    for i, vertices_2d in vertices_cad_dic.items():
+        #print(vertices_2d)
+        for j, keypoint in enumerate(keypoints):
+            #print("KP", keypoint)
+            res = np.ones([len(vertices_2d),2])*keypoint[1:] - np.transpose([vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2]])
+            
+            #print(res)
+            dist = np.min( np.linalg.norm(res, axis = 1 ))
+            #print(dist)
+            if i == 0 and dist < radius:
+                #print("inside",j,i)
+                keypoints_to_cad[j] = [i, dist]
+            elif i == 0 and dist >= radius:
+                #print("INFTY", j,i)
+                keypoints_to_cad[j] = [-1, np.infty]
+                
+            elif dist < keypoints_to_cad[j][1] and dist <= radius:
+                #print("inside new dist", dist, j, i)
+                keypoints_to_cad[j] = [i, dist]
+                
+    
+    count = 0
+    result = -1
+    #print("LENGTH of keypoints to CAD", len(keypoints_to_cad))
+    #print("KEYPOINTS TO CAD", keypoints_to_cad)
+
+    a = np.array( list( keypoints_to_cad.values()))[:,0]
+    index, counts = np.unique(a, return_counts=True)
+    #print(index, counts)
+    if index[np.argmax(counts)] == -1 and len(counts)>1:
+        return keypoints_to_cad, index[1], counts[1]
+
+    return keypoints_to_cad, index[np.argmax(counts)], np.max(counts)
+"""
