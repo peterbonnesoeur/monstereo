@@ -170,7 +170,7 @@ class TransformerModel(nn.Module):
         kps = rearrange(src, 'b (n t) -> b n t', t = self.ntoken)
         #print("KPS SIZE",kps.size())
         #print(kps)
-        mask = self.generate_mask_keypoints(kps)
+        mask = self.generate_mask_keypoints(kps).clone().detach()
         #print("Mask size", mask.size())
         src = self.patch_to_embedding(kps)
         

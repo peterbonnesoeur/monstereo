@@ -2,8 +2,8 @@
 
 import argparse
 
-from openpifpaf.network import nets
-from openpifpaf import decoder
+#from openpifpaf.network import nets
+#from openpifpaf import decoder
 
 
 def cli():
@@ -52,8 +52,8 @@ def cli():
     predict_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     predict_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     # Pifpaf
-    nets.cli(predict_parser)
-    decoder.cli(predict_parser, force_complete_pose=True, instance_threshold=0.15)
+    #nets.cli(predict_parser)
+    #decoder.cli(predict_parser, force_complete_pose=True, instance_threshold=0.15)
     predict_parser.add_argument('--scale', default=1.0, type=float, help='change the scale of the image to preprocess')
 
     # Monoloco

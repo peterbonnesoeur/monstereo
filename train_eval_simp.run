@@ -17,8 +17,8 @@
 
 
 
-export dropout='0.0'
-dropout='0.0'
+export dropout='0.3'
+dropout='0.3'
 
 args='--confidence --transformer'
 
