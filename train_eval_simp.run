@@ -17,10 +17,11 @@
 
 
 
-export dropout='0.3'
-dropout='0.3'
+export dropout='0.0'
+dropout='0.0'
 
-args=''
+args='--confidence --transformer'
 
-export process_mode='mean'
+export process_mode='NULL_ISNT_IT'
+    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
     source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"

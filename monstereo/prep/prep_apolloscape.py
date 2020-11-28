@@ -82,15 +82,14 @@ class PreprocessApolloscape:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20, radius=200, dropout = 0, confidence = False, iou_min = 0.3):
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False):
 
         logging.basicConfig(level=logging.INFO)
         #self.logger = logging.getLogger(__name__)
 
         self.buffer = buffer
 
-        #! To remove
-        #self.radius = radius
+        self.transformer = transformer
 
         self.dropout =dropout
         
@@ -125,11 +124,16 @@ class PreprocessApolloscape:
             identifier+="-kps_3d"
             kps_3d_id+="-kps_3d"
 
+        if self.transformer:
+            identifier+="-transformer"
+            kps_3d_id+="-transformer"
+
         name_out = 'ms-' + now_time + identifier+"-prep"+".txt"
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} "
-                         "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {} \nKeypoints 3D: {}".format(dir_ann, process_mode, dropout, confidence, self.kps_3d))
+                         "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints:"
+                         " {} \nKeypoints 3D: {} \nTransformer: {}".format(dir_ann, process_mode, dropout, confidence, self.kps_3d, self.transformer))
 
 
         self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')

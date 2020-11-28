@@ -47,7 +47,7 @@ class PreprocessKitti:
     dic_names = defaultdict(lambda: defaultdict(list))
     dic_std = defaultdict(lambda: defaultdict(list))
 
-    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0, confidence=False):
+    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0, confidence=False, transformer = False):
 
         self.vehicles = vehicles
         self.dir_ann = dir_ann
@@ -55,6 +55,8 @@ class PreprocessKitti:
         self.monocular = monocular
         self.dropout = dropout
         self.confidence = confidence
+        self.transformer = transformer
+
         #self.dir_gt = os.path.join('data', 'kitti', 'gt')
         self.dir_gt = os.path.join('data', 'kitti', 'training', "label_2")
         self.dir_images = 'data/kitti/training/image_2'
@@ -75,6 +77,8 @@ class PreprocessKitti:
         if not self.monocular:
             identifier+="stereo-"
 
+        if self.transformer:
+            identifier+="transformer-"
 
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
@@ -88,7 +92,8 @@ class PreprocessKitti:
 
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} \nmonocular: {}"
-                         "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {} \nConfidence keypoints: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout, confidence))
+                         "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {} "
+                         "\nConfidence keypoints: {} \nTransformer: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout, confidence, transformer))
 
         self.path_joints = os.path.join(dir_out, 'joints-kitti-' +identifier + now_time + '.json')
         self.path_names = os.path.join(dir_out, 'names-kitti-' +identifier + now_time + '.json')

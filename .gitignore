@@ -20,4 +20,5 @@ export/
 *.run
 *.csv
 .ipynb_checkpoints/
+archive/
 .vscode/

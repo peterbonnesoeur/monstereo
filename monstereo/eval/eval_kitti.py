@@ -32,7 +32,7 @@ class EvalKitti:
     CATEGORIES = ('pedestrian',)
 
     def __init__(self, thresh_iou_monoloco=0.3, thresh_iou_base=0.3, thresh_conf_monoloco=0.2, thresh_conf_base=0.5,
-                 verbose=False, vehicles = False, dir_ann = None):
+                 verbose=False, vehicles = False, transformer = False,dir_ann = None):
 
         self.main_dir = os.path.join('data', 'kitti')
 
@@ -44,13 +44,16 @@ class EvalKitti:
 
         self.identifier=''
         if vehicles:
-            self.identifier+='_car'
+            self.identifier+='car-'
         else:
-            self.identifier+='_human'
+            self.identifier+='human-'
+
+        if transformer:
+            self.identifier+="transformer-"
 
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
-        name_out = 'ms-' + now_time+'-'+"eval"+".txt"
+        name_out = 'ms-' + now_time+'-'+self.identifier+"eval"+".txt"
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
 
 
@@ -61,7 +64,7 @@ class EvalKitti:
 
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M")[2:]
-        self.path_results = os.path.join(dir_logs, 'eval-' + now_time + '.json')
+        #self.path_results = os.path.join(dir_logs, 'eval-' + now_time + '.json')
         self.verbose = verbose
 
         self.dic_thresh_iou = {method: (thresh_iou_monoloco if method in self.OUR_METHODS
@@ -72,7 +75,7 @@ class EvalKitti:
                                 for method in self.methods}
 
         if not vehicles:
-            indexes = [self.methods.index('pseudo-lidar'), self.methods.index('mono-grnet')]
+            indexes = [self.methods.index('pseudo-lidar'), self.methods.index('monogrnet')]
             for index in indexes:
                 self.methods.pop(index)
             print(self.methods)
@@ -449,7 +452,7 @@ class EvalKitti:
                for key in all_methods]
 
         ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:4] + ' [' +
-                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:2] + '%]'
+                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:3] + '%]'
                 for clst in self.CLUSTERS[:4]]
                for key in all_methods]
 

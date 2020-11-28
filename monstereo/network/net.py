@@ -24,11 +24,12 @@ class Loco:
     LINEAR_SIZE_MONO = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False):
+    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False, transformer = False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
         self.confidence = confidence
+        self.transformer = transformer
 
         assert self.net in ('monstereo', 'monoloco', 'monoloco_p', 'monoloco_pp')
         if self.net == 'monstereo':
@@ -90,7 +91,7 @@ class Loco:
                                            output_size=output_size)
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
-                                         linear_size=linear_size, device=self.device)
+                                         linear_size=linear_size, device=self.device, transformer = transformer)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
         else:

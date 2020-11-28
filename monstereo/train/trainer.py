@@ -39,7 +39,7 @@ class Trainer:
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
-                 confidence = False):
+                 confidence = False, transformer = False):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -78,6 +78,7 @@ class Trainer:
         self.auto_tune_mtl = False
 
         self.confidence = confidence
+        self.transformer = transformer
 
         self.identifier = '' #Used to differentiate the training models
         if self.vehicles:
@@ -89,8 +90,8 @@ class Trainer:
         if "loose" in joints:
             self.identifier+="-loose"
         
-        if  "originals" in joints:
-            self.identifier+="-originals"
+        if self.transformer:
+            self.identifier+="-transformer"
 
         if self.kps_3d:
             self.identifier+="-kps_3d"
@@ -192,9 +193,11 @@ class Trainer:
             self.logger.info("Training arguments: \nepochs: {} \nbatch_size: {} \ndropout: {}"
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
-                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} \nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} "
+                             "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} "
+                             "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \n Transformer: {}"
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
-                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, kps_3d, process_mode, dropout_images, self.confidence))
+                                     output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, 
+                                     kps_3d, process_mode, dropout_images, self.confidence,self.transformer))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)
@@ -208,10 +211,11 @@ class Trainer:
         # Define the model
         self.logger.info('Sizes of the dataset: {}'.format(self.dataset_sizes))
         print(">>> creating model")
-
+        
         self.model = SimpleModel(input_size=input_size, output_size=output_size, linear_size=hidden_size,
-                                 p_dropout=dropout, num_stage=self.n_stage, device=self.device)
+                                p_dropout=dropout, num_stage=self.n_stage, device=self.device, transformer = self.transformer)
         self.model.to(self.device)
+        
         print(">>> model params: {:.3f}M".format(sum(p.numel() for p in self.model.parameters()) / 1000000.0))
         print(">>> loss params: {}".format(sum(p.numel() for p in self.mt_loss.parameters())))
 
@@ -289,9 +293,12 @@ class Trainer:
         for i, task in enumerate(self.tasks):
             running_loss[phase][task] += loss_values[i].item() * inputs.size(0)
 
-    def evaluate(self, load=False, model=None, debug=False):
+    def evaluate(self, load=False, model=None, debug=False, confidence =False ,transformer = False):
 
         # To load a model instead of using the trained one
+
+        self.confidence = confidence
+        self.transformer = transformer
         if load:
             self.model.load_state_dict(torch.load(model, map_location=lambda storage, loc: storage))
 
