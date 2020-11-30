@@ -149,8 +149,9 @@ class TransformerModel(nn.Module):
             mask = torch.tensor( kps[:,2]>0)
 
         return mask 
-            
-        
+
+    def conf_remover(self, src):
+        return src[:,:,:2]   
 
     def init_weights(self):
         initrange = 0.1
@@ -162,21 +163,24 @@ class TransformerModel(nn.Module):
         
         #print("INPUT",src.size())
         
-        assert src.size(1)%self.ntoken==0, "Wrong input, we need the flattened keypoints with the confidence"
+        assert src.size(1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
         
         #print(src.size())
         #print(src)
         #print("SIZE INPUT",src.size())
-        kps = rearrange(src, 'b (n t) -> b n t', t = self.ntoken)
+        src = rearrange(src, 'b (n t) -> b n t', t = 3)
         #print("KPS SIZE",kps.size())
         #print(kps)
-        mask = self.generate_mask_keypoints(kps).clone().detach()
+        mask = self.generate_mask_keypoints(src).clone().detach()
         #print("Mask size", mask.size())
-        src = self.patch_to_embedding(kps)
+        
+        src = self.conf_remover(src)
+
+        #src = self.patch_to_embedding(src)
         
         #print("ENCODED INPUT", src.size())
         
-        src = self.pos_encoder(src)
+        #src = self.pos_encoder(src)
         
         #print("POS ENCODED INPUT", src.size())
         #print("Mask size", src_mask.size())

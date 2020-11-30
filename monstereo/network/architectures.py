@@ -125,11 +125,12 @@ class SimpleModel(nn.Module):
 
         # Preprocessing
         if self.transformer:
-            assert input_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
+            assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
             # The max 
-            self.transformer = TransformerModel(ntoken = 3, ninp = 4, nhead = 2,  nhid = 2, nlayers = 2, max_len = 24, dropout = 0.1)
-            
-        self.w1 = nn.Linear(self.stereo_size, self.linear_size)
+            self.transformer = TransformerModel(ntoken = 2, ninp = 2, nhead = 2,  nhid = 1, nlayers = 1, max_len = 24, dropout = 0.1)
+            self.w1 = nn.Linear(int(self.stereo_size/3*2), self.linear_size)
+        else:
+            self.w1 = nn.Linear(self.stereo_size, self.linear_size)
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
 
         # Internal loop
