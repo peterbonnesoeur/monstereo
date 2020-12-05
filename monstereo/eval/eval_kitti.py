@@ -159,13 +159,17 @@ class EvalKitti:
 
     def printer(self, show, save):
 
+        if self.vehicles:
+            identifier = "_car"
+        else:
+            identifier = "_vehicles"
 
         
         if save or show:
-            show_results(self.dic_stats,self.methods ,self.CLUSTERS, show, save, identifier=self.identifier, vehicles = self.vehicles)
-            show_spread(self.dic_stats, self.CLUSTERS, show, save, identifier=self.identifier)
-            show_box_plot(self.errors, self.CLUSTERS, show, save, identifier=self.identifier)
-            show_task_error(show, save, identifier=self.identifier)
+            show_results(self.dic_stats,self.methods ,self.CLUSTERS, show, save, identifier=identifier, vehicles = self.vehicles)
+            show_spread(self.dic_stats, self.CLUSTERS, show, save, identifier=identifier)
+            show_box_plot(self.errors, self.CLUSTERS, show, save, identifier=identifier)
+            show_task_error(show, save, identifier=identifier)
 
     def _parse_txts(self, path, method):
 

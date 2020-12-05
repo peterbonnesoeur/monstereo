@@ -196,7 +196,6 @@ class Printer:
             ax1 = fig.add_subplot(gs[1,0])
             ax2 = ax0
             ax3 = fig.add_subplot(gs[1,1],projection='3d')
-            #fig, (ax0s, ax1s) = plt.subplots(2, 2, sharey=False, gridspec_kw={'width_ratios': },1                               figsize=(fig_width, fig_height))
 
             
             """ax0, ax1 = ax0s
@@ -370,7 +369,7 @@ class Printer:
 
                 # Draw bird eye view text
                 if draw_text:
-                    self.draw_text_bird(axes, idx, num)
+                    self.draw_text_bird(axes, idx, num, angle = False)
                     num += 1
         # Add the legend
 
@@ -588,7 +587,7 @@ class Printer:
         axes[0].text(uv[0] + self.radius, uv[1] * self.y_scale - self.radius, str(num),
                      fontsize=self.FONTSIZE, color=self.TEXTCOLOR, weight='bold')
 
-    def draw_text_bird(self, axes, idx, num):
+    def draw_text_bird(self, axes, idx, num, angle = False):
         """Plot the number in the bird eye view map"""
 
         std = self.stds_epi[idx] if self.stds_epi[idx] > 0 else self.stds_ale[idx]
@@ -602,11 +601,14 @@ class Printer:
 
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
-            #axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+            if angle:
+                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
         else:
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] - 5,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
-            #axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+            if angle:
+
+                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
 
     def draw_circle(self, axes, uv, color):
 

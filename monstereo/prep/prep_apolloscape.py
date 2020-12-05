@@ -18,53 +18,6 @@ from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec
 
 
 
-
-def extract_box_average(boxes_3d):
-    boxes_np = np.array(boxes_3d)
-    means = np.mean(boxes_np[:, 3:], axis=0)
-    stds = np.std(boxes_np[:, 3:], axis=0)
-    print(means)
-    print(stds)
-
-
-
-
-def bbox_gt_extract(bbox_3d, kk):
-    zc = np.mean(bbox_3d[:,2])
-    
-    #take the top right corner and the bottom left corner of the bounding box in the 3D spac
-    corners_3d = np.array([[np.min(bbox_3d[:,0]), np.min(bbox_3d[:,1]), zc], [np.max(bbox_3d[:,0]), np.max(bbox_3d[:,1]), zc] ])
-    
-    box_2d = []
-    
-    for xyz in corners_3d:
-        xx, yy, zz = np.dot(kk, xyz)
-        uu = xx / zz
-        vv = yy / zz
-        box_2d.append(uu)
-        box_2d.append(vv)
-
-    return box_2d
-    
-def append_cluster(dic_jo, phase, xx, ys, kps):
-    """Append the annotation based on its distance"""
-
-    for clst in APOLLO_CLUSTERS:
-        try:
-            if ys[3] <= int(clst):
-                dic_jo[phase]['clst'][clst]['kps'].append(kps)
-                dic_jo[phase]['clst'][clst]['X'].append(xx)
-                dic_jo[phase]['clst'][clst]['Y'].append(ys)
-                break
-            
-        except ValueError:
-            dic_jo[phase]['clst'][clst]['kps'].append(kps)
-            dic_jo[phase]['clst'][clst]['X'].append(xx)
-            dic_jo[phase]['clst'][clst]['Y'].append(ys)
-
-
-
-
 class PreprocessApolloscape:
 
 
@@ -85,7 +38,6 @@ class PreprocessApolloscape:
     def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False):
 
         logging.basicConfig(level=logging.INFO)
-        #self.logger = logging.getLogger(__name__)
 
         self.buffer = buffer
 
@@ -167,9 +119,6 @@ class PreprocessApolloscape:
 
             for ii, scene in enumerate(self.scenes):
                 
-                if ii ==-100:
-                    print("val_scenes",self.validation_scenes)
-
                 if ii==(-10):
                     print("BREAK")
                     break
@@ -189,26 +138,28 @@ class PreprocessApolloscape:
                     print("phase name not in training or validation split")
                     continue
                     
-                kk = K["Camera_"+camera_id]#intrinsic_vec_to_mat( K["Camera_"+camera_id])
+                kk = K["Camera_"+camera_id]
                 
                 path_im = scene
                 
                 # Run IoU with pifpaf detections and save
                 path_pif = os.path.join(self.dir_ann, scene_id+".jpg" + '.predictions.json')
                             
-                if os.path.isfile(path_pif) and True:
+                if os.path.isfile(path_pif):
                     boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
+                else:
+                    print("-"*50)
+                    print("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
+                    print("-"*50)
 
-    
+                    
                 self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
                 
                 self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
                 self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
 
                 ys_list_final = []
-                #print("length keypoints list",len(kps_list))
 
-                #print("length boxes gt list",len(boxes_gt_list))
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
                     kps = [kps.transpose().tolist()]                    
@@ -221,12 +172,9 @@ class PreprocessApolloscape:
                     if self.kps_3d:
                         keypoints = clear_keypoints(kps, 3)
                         z = (keypoints[:, 2, :]).tolist()[0]
-                        #print("Z", z)
                         ys = list(ys)
                         ys.append(z)
                         ys_list_final.append(ys)
-                        #print("YS NEW", ys)
-                        #raise ValueError
 
                     self.dic_jo[phase]['kps'].append(kps.tolist())
                     self.dic_jo[phase]['X'].append(list(inp))
@@ -268,7 +216,6 @@ class PreprocessApolloscape:
     def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):
         with open(car_poses) as json_file:
             data = json.load(json_file) #open the pose of the cars
-        #print("NUMBER OF INSTANCES DETECTED BY PIFPAF", len(data))
         dic_vertices = {}
         dic_boxes = {}
         dic_poses = {}
@@ -287,7 +234,6 @@ class PreprocessApolloscape:
             vertices_2d = np.matmul(vertices_r,intrinsic_matrix.transpose()) # Projected vertices on the 2D plane
             x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
             box_gt = [np.min(x), np.min(y), np.max(x), np.max(y)]
-            #box_gt = bbox_gt_extract(bbox_3d, intrinsic_matrix)  # Take the overal bounding box in the 2D space
             
             dic_vertices[car_index] = vertices_2d
             dic_boxes[car_index] = [box_gt, w, l, h]
@@ -296,99 +242,84 @@ class PreprocessApolloscape:
 
         new_keypoints = None
         
-        #print("LENGTH OF THE EXTRACTED POSES",len(dic_poses))
-        #print("LENGTH OF THE EXTRACTED vertices",len(dic_vertices))
-        #  print("DIC_BOXES", dic_boxes)
-                           
-        if "sample" not in self.path:
-                           
-            #car_keypoints = os.path.join(self.path, "keypoints", scene_id)
+        keypoints_list = []
+        boxes_gt_list = []  # Countain the the 2D bounding box of the vehicles
+        boxes_3d_list = []
+        ys_list = []     
+        car_model_list = []          
+        
+        keypoints_pifpaf = pifpaf_info_extractor(path_pif)
+
+
+        #? MAtch the 2d keypoints of the dataset with the keypoints from pifpaf
+        boxes_kps=[]
+        for index_keypoints, keypoints in enumerate(keypoints_pifpaf):
             
-            keypoints_list = []
-            boxes_gt_list = []  # Countain the the 2D bounding box of the vehicles
-            boxes_3d_list = []
-            ys_list = []     
-            car_model_list = []          
+            dic_keypoints[index_keypoints] = np.array(keypoints)
+            kps = keypoints[keypoints[:,0]>0][:, 1:]
+            if len(kps)>1:
+                conf = np.sum(keypoints[:,0])
+                box_kp = [min(kps[:,0]), min(kps[:,1]),max(kps[:,0]), max(kps[:,1]), conf ]
+                boxes_kps.append(box_kp)
+
+        boxes_gt=[]
+        for i, vertices_2d in dic_vertices.items():
+            x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
+            boxes_gt.append([min(x),min(y), max(x), max(y)])
             
-            keypoints_pifpaf = pifpaf_info_extractor(path_pif)
-            #print("NUMBER OF KEYPOINTS of PIFPAF", len(keypoints_pifpaf))
-            #print("MAME OF THE FILE", scene_id)
-            #Compute the similarity between each set of car models in the 3D space and the set of keypoints from in the 2D space
+        matches = get_iou_matches(boxes_kps, boxes_gt, iou_min=self.iou_min)
 
-            #? MAtch the 2d keypoints of the dataset with the keypoints from pifpaf
-            boxes_kps=[]
-            for index_keypoints, keypoints in enumerate(keypoints_pifpaf):
-                
-                dic_keypoints[index_keypoints] = np.array(keypoints)
-                kps = keypoints[keypoints[:,0]>0][:, 1:]
-                if len(kps)>1:
-                    conf = np.sum(keypoints[:,0])
-                    box_kp = [min(kps[:,0]), min(kps[:,1]),max(kps[:,0]), max(kps[:,1]), conf ]
-                    boxes_kps.append(box_kp)
-
-            boxes_gt=[]
-            for i, vertices_2d in dic_vertices.items():
-                x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
-                #print(x,y,vertices_2d[:,2] )
-                boxes_gt.append([min(x),min(y), max(x), max(y)])
-                
-            matches = get_iou_matches(boxes_kps, boxes_gt, iou_min=self.iou_min)
-
-            for match in matches:
-                index_keypoint = match[0]
-                index_vertice = match[1]
-                
-                vertices_to_keypoints[index_vertice] = [index_keypoint, None]
+        for match in matches:
+            index_keypoint = match[0]
+            index_vertice = match[1]
             
+            vertices_to_keypoints[index_vertice] = [index_keypoint, None]
+        
 
-            #? With the keypoints now matched, extract the depth of the leypoints of the ground-truth and apply them to the keypoints
-            #print("LENGTH OF VERTICES TO KEYPOINTS", len(vertices_to_keypoints))
-            for index_cad, (index_keypoints, count) in vertices_to_keypoints.items()   :
+        #? With the keypoints now matched, extract the depth of the leypoints of the ground-truth and apply them to the keypoints
+        for index_cad, (index_keypoints, count) in vertices_to_keypoints.items()   :
 
-                #if (index_cad != -1 and count >=1):
+            keypoints = dic_keypoints[index_keypoints]
+            vertices_2d = dic_vertices[index_cad]
+            
+            new_keypoints = keypoint_expander(vertices_2d, keypoints, self.buffer ,self.kps_3d)
 
-                keypoints = dic_keypoints[index_keypoints]
-                vertices_2d = dic_vertices[index_cad]
-                
-                new_keypoints = keypoint_expander(vertices_2d, keypoints, self.buffer ,self.kps_3d)
-
-                if self.kps_3d :
-                    keypoints_list.append( new_keypoints[:,[1,2,3,0]])
-                else:
-                    keypoints_list.append( new_keypoints[:,[1,2,0]])
-                                    
-                boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                
-                
-                w, l, h = dic_boxes[index_cad][1:]
-                pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-                
-                boxes_3d_list.append([xc, yc, zc, w, l, h])
-                
-                yaw = yaw%np.pi*2
-                if yaw > np.pi:
-                    yaw = yaw - 2*np.pi
-                elif yaw < -np.pi:
-                    yaw = yaw + np.pi*2
-                
-                sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
-                
-                if True :
-                    rtp = to_spherical([xc, yc, zc])
-                    r, theta, psi = rtp # With r =d = np.linalg.norm([xc,yc,zc]) -> conversion to spherical coordinates 
-                    #print("THETA, PSI, R", theta, psi, r)
-                    ys_list.append([theta, psi, zc, r, h, w, l, sin, cos, yaw])
-                else:
-                    ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
-                
-                
-                car_model_list.append(dic_car_model[index_cad])
-                
-            #print("LENGTH OF YS_LIST", len(ys_list))     
-            return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
+            if self.kps_3d :
+                keypoints_list.append( new_keypoints[:,[1,2,3,0]])
+            else:
+                keypoints_list.append( new_keypoints[:,[1,2,0]])
+                                
+            boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
+            
+            
+            w, l, h = dic_boxes[index_cad][1:]
+            pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
+            
+            boxes_3d_list.append([xc, yc, zc, w, l, h])
+            
+            yaw = yaw%np.pi*2
+            if yaw > np.pi:
+                yaw = yaw - 2*np.pi
+            elif yaw < -np.pi:
+                yaw = yaw + np.pi*2
+            
+            sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
+            
+            if True :
+                rtp = to_spherical([xc, yc, zc])
+                r, theta, psi = rtp # With r =d = np.linalg.norm([xc,yc,zc]) -> conversion to spherical coordinates 
+                #print("THETA, PSI, R", theta, psi, r)
+                ys_list.append([theta, psi, zc, r, h, w, l, sin, cos, yaw])
+            else:
+                ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
+            
+            
+            car_model_list.append(dic_car_model[index_cad])
+            
+        return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
         
         
-        else:
+        """else:
             print("HERE")
             for index_cad, _ in dic_vertices.items() :
                 
@@ -402,7 +333,7 @@ class PreprocessApolloscape:
 
                 ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, np.sin(yaw), np.cos(yaw), yaw])
             
-            return boxes_gt_list, boxes_3d_list, None, ys_list
+            return boxes_gt_list, boxes_3d_list, None, ys_list"""
             
     
             
@@ -412,6 +343,8 @@ def factory(dataset, dir_apollo):
     assert dataset in ['train', '3d_car_instance_sample']
 
     path = os.path.join(dir_apollo, dataset)
+    if "sample" in dataset:
+        path = os.path.join(path, '3d_car_instance_sample')
     
     if dataset == 'train':
         
@@ -422,16 +355,62 @@ def factory(dataset, dir_apollo):
             validation_scenes = file.read().splitlines()
             
     elif dataset == '3d_car_instance_sample':
-        with open(os.path.join(path, "split", "train-list.txt"), "r") as file:
+        with open(os.path.join(path,"split", "train.txt"), "r") as file:
             train_scenes = file.read().splitlines()
         #scenes = [scene for scene in scenes if scene['token'] in train_scenes]
-        with open(os.path.join(path, "split", "validation-list.txt"), "r") as file:
+        with open(os.path.join(path,  "split", "val.txt"), "r") as file:
             validation_scenes = file.read().splitlines()
     
     path_img = os.path.join(path, "images")
     scenes = [os.path.join(path_img, file) for file in os.listdir(path_img) if file.endswith(".jpg")]
     
     return scenes, train_scenes, validation_scenes
+
+
+
+def extract_box_average(boxes_3d):
+    boxes_np = np.array(boxes_3d)
+    means = np.mean(boxes_np[:, 3:], axis=0)
+    stds = np.std(boxes_np[:, 3:], axis=0)
+    print(means)
+    print(stds)
+
+
+
+
+def bbox_gt_extract(bbox_3d, kk):
+    zc = np.mean(bbox_3d[:,2])
+    
+    #take the top right corner and the bottom left corner of the bounding box in the 3D spac
+    corners_3d = np.array([[np.min(bbox_3d[:,0]), np.min(bbox_3d[:,1]), zc], [np.max(bbox_3d[:,0]), np.max(bbox_3d[:,1]), zc] ])
+    
+    box_2d = []
+    
+    for xyz in corners_3d:
+        xx, yy, zz = np.dot(kk, xyz)
+        uu = xx / zz
+        vv = yy / zz
+        box_2d.append(uu)
+        box_2d.append(vv)
+
+    return box_2d
+    
+def append_cluster(dic_jo, phase, xx, ys, kps):
+    """Append the annotation based on its distance"""
+
+    for clst in APOLLO_CLUSTERS:
+        try:
+            if ys[3] <= int(clst):
+                dic_jo[phase]['clst'][clst]['kps'].append(kps)
+                dic_jo[phase]['clst'][clst]['X'].append(xx)
+                dic_jo[phase]['clst'][clst]['Y'].append(ys)
+                break
+            
+        except ValueError:
+            dic_jo[phase]['clst'][clst]['kps'].append(kps)
+            dic_jo[phase]['clst'][clst]['X'].append(xx)
+            dic_jo[phase]['clst'][clst]['Y'].append(ys)
+
 
 """
 def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):

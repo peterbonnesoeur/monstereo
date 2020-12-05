@@ -11,7 +11,8 @@ from PIL import Image
 
 from .visuals.printer import Printer
 from .visuals.pifpaf_show import KeypointPainter, image_canvas
-from .network import PifPaf, ImageList, Loco
+#from .network import PifPaf, ImageList, Loco
+from .network import  ImageList, Loco
 from .network.process import factory_for_gt, preprocess_pifpaf
 
 from .utils import open_annotations
@@ -21,16 +22,17 @@ def predict(args):
     cnt = 0
 
     # Load Models
-    pifpaf = PifPaf(args)
+   # pifpaf = PifPaf(args)
     assert args.mode in ('mono', 'stereo', 'pifpaf')
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if 'mono' in args.mode:
         monoloco = Loco(model=args.model, net='monoloco_pp',
-                        device=args.device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence)
+                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence)
       
     if 'stereo' in args.mode:
         monstereo = Loco(model=args.model, net='monstereo',
-                         device=args.device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence)
+                         device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence)
 
     # data
     data = ImageList(args.images, scale=args.scale)
@@ -41,18 +43,18 @@ def predict(args):
         bs = 1
 
     data_loader = torch.utils.data.DataLoader(
-        data, batch_size=bs, shuffle=False,
-        pin_memory=args.pin_memory, num_workers=args.loader_workers)
+        data, batch_size=bs, shuffle=False)#,
+        #pin_memory=args.pin_memory, num_workers=args.loader_workers)
 
     for idx, (image_paths, image_tensors, processed_images_cpu) in enumerate(data_loader):
         images = image_tensors.permute(0, 2, 3, 1)
         
 
         if not args.joints_folder is None:
-            processed_images = processed_images_cpu.to(args.device, non_blocking=True)
-            fields_batch = pifpaf.fields(processed_images)
-
-        
+            processed_images = processed_images_cpu.to(device, non_blocking=True)
+            #fields_batch = pifpaf.fields(processed_images)     #! Waiting for the new integratio n with pifpaf
+            fields_batch = image_paths
+    
         # unbatch stereo pair
         for ii, (image_path, image, processed_image_cpu, fields) in enumerate(zip(
                 image_paths, images, processed_images_cpu, fields_batch)):
@@ -113,10 +115,8 @@ def predict(args):
             im_name = os.path.basename(image_path_l)
             im_size = (float(image.size()[1] / args.scale), float(image.size()[0] / args.scale))  # Original
             kk, dic_gt = factory_for_gt(im_size, name=im_name, path_gt=args.path_gt)
-            #print("dic_gt", dic_gt)
             # Preprocess pifpaf outputs and run monoloco
             boxes, keypoints = preprocess_pifpaf(pifpaf_outs['left'], im_size, enlarge_boxes=False)
-            #print("KEYPOINTS",keypoints)
             if args.mode == 'mono':
                 print("Prediction with MonoLoco++")
                 dic_out = monoloco.forward(keypoints, kk)

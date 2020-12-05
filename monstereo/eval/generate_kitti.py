@@ -46,12 +46,10 @@ class GenerateKitti:
                 model_mono_pp = model
 
 
-            #model_mono_pp = 'data/models/ms-201021-1825.pkl' #KITTI human
             if model_mono is not None:
                 model_mono_pp = model_mono
             else:
-                model_mono_pp = None#'data/models/ms-201022-1548-vehicles.pkl' # KITTI vehicle
-            # model_mono_pp = 'data/models/stereoloco-200608-1550.pkl'  # nuScenes_pp
+                model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
                                     p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer)
 
@@ -260,6 +258,7 @@ def save_txts(path_txt, all_inputs, all_outputs, all_params, mode='monoloco', ca
             # Set the scale to obtain (approximately) same recall at evaluation¨
             #!bookmark
             n = 3
+            n =1.7
             if mode == 'monstereo':
                 conf_scale = n*0.03
                 if vehicles:

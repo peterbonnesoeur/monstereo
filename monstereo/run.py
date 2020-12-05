@@ -52,8 +52,6 @@ def cli():
     predict_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     predict_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     # Pifpaf
-    #nets.cli(predict_parser)
-    #decoder.cli(predict_parser, force_complete_pose=True, instance_threshold=0.15)
     predict_parser.add_argument('--scale', default=1.0, type=float, help='change the scale of the image to preprocess')
 
     # Monoloco
@@ -145,14 +143,15 @@ def main():
             from .prep.preprocess_nu import PreprocessNuscenes
             prep = PreprocessNuscenes(args.dir_ann, args.dir_nuscenes, args.dataset, args.iou_min)
             prep.run()
-        elif 'apolloscape' in args.dataset:
-            from .prep.prep_apolloscape import PreprocessApolloscape
-            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer,  kps_3d = args.kps_3d, dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
-            prep.run()
         elif 'apolloscape_mini' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
             prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer,  kps_3d = args.kps_3d, dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
             prep.run()
+        elif 'apolloscape' in args.dataset:
+            from .prep.prep_apolloscape import PreprocessApolloscape
+            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer,  kps_3d = args.kps_3d, dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
+            prep.run()
+
         else:
             from .prep.prep_kitti import PreprocessKitti
             prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer)
