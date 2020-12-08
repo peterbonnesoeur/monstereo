@@ -141,7 +141,7 @@ class SimpleModel(nn.Module):
             self.w1 = nn.Linear(int(self.stereo_size/3*ntoken), self.linear_size)
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
-        #self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
+        self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
         self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # Internal loop
@@ -152,7 +152,7 @@ class SimpleModel(nn.Module):
         # Post processing
         self.w2 = nn.Linear(self.linear_size, self.linear_size)
         self.w3 = nn.Linear(self.linear_size, self.linear_size)
-        #self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
+        self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
         self.group_norm3 =  nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # ------------------------Other----------------------------------------------
