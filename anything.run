@@ -10,10 +10,4 @@
 #SBATCH --time 24:00:00
 
 
-export dropout='0.3'
-dropout='0.3'
-export process_mode='mean'
-    args='--confidence'
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
-    args=''
-    source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car ${args}
+python3 -m monstereo.run eval --dir_ann data/kitti-pifpaf/annotations --model nope  --model_mono data/models/ms-201207-194659-transformer-kitti.pkl --generate --save --verbose --confidence --transformer

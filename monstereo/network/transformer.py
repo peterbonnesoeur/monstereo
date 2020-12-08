@@ -25,13 +25,15 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         if self.kind == "add":
-            x = x + self.pe[:x.size(0), :]
+            pe = self.pe.permute(1,0, 2).repeat(x.size(0),1, 1)
+            x = x + pe[:, :x.size(1)]
         elif self.kind == "cat":
             #print(self.pe)
             #print("SIZES", x.size(), self.pe.size(), self.pe.permute(1,0, 2).repeat(x.size(0),1, 1).size())
             pe = self.pe.permute(1,0, 2).repeat(x.size(0),1, 1)
             #print("SIZES", x.size(), pe[:, :x.size(1)].size())
             #print(pe)
+            #! To prettify
             x = torch.cat((x, pe[:, :x.size(1)]), dim = 2)
             #print(x)
             return x
@@ -57,6 +59,7 @@ class Attention(nn.Module):
 
     def forward(self, x, mask = None):
         b, n, _, h = *x.shape, self.heads
+        #print("X size", x.size())
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
 
@@ -153,7 +156,10 @@ class TransformerModel(nn.Module):
         self.ntoken = ntoken
 
         self.model_type = 'Transformer'
-        self.pos_encoder = PositionalEncoding(ntoken, dropout, kind = kind) # Here, we try a different kind of pos encoder which is using concatination functions
+        if kind == "cat":
+            self.pos_encoder = PositionalEncoding(2, dropout, kind = kind) # Here, we try a different kind of pos encoder which is using concatination functions
+        else:
+            self.pos_encoder = PositionalEncoding(ntoken, dropout, kind = kind) # Here, we try a different kind of pos encoder which is using concatination functions
         
    
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
@@ -192,7 +198,7 @@ class TransformerModel(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src, src_mask= None):
+    def forward(self, src, env = None ,src_mask= None):
         
         #print("INPUT",src.size())
         
@@ -205,14 +211,30 @@ class TransformerModel(nn.Module):
         
         src = self.conf_remover(src)
 
+        if env is not None:
+            #print("env dimensions are :", env.size(), src.size())
+            env = env.unsqueeze(1).repeat(1,src.size(1), 1)
+            #print(env.size())
+            src = torch.cat((src, env), dim = 2)
+            #print("0-final src dim", src.size())
+        else:
+            #print("NO ENV", env)
+            pass
+            
+
+
+        #print("1-final src dim", src.size())
         src = self.pos_encoder(src)
+        #print("2-final src dim", src.size())
         src[mask == False] = 0 # Remove the occluded keypoints
 
+        #print("3- final src dim", src.size())
 
+        #raise ValueError
         #output = self.transformer_encoder(src, src_mask)
         src_mask = self.generate_square_subsequent_mask(src.size(1))
 
-        mask = torch.full(mask.size(), True)
+        #mask = torch.full(mask.size(), True)
 
         output = self.transformer(src, mask)
         #print("EXIT TRANSFORMER SIZE", output.size())

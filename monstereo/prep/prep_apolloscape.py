@@ -35,13 +35,15 @@ class PreprocessApolloscape:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False):
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False, surround = False):
 
         logging.basicConfig(level=logging.INFO)
 
         self.buffer = buffer
 
         self.transformer = transformer
+
+        self.surround = surround
 
         self.dropout =dropout
         

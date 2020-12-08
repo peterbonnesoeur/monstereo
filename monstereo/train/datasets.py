@@ -46,7 +46,7 @@ class KeypointsDataset(Dataset):
     Dataloader from nuscenes or kitti datasets
     """
 
-    def __init__(self, joints, phase, kps_3d = False):
+    def __init__(self, joints, phase, kps_3d = False, transformer = False, surround = False):
         """
         Load inputs and outputs from the pickles files from gt joints, mask joints or both
         """
@@ -57,10 +57,19 @@ class KeypointsDataset(Dataset):
             dic_jo = json.load(f)
 
         self.kps_3d = kps_3d
+        self.transformer = transformer
+        self.surround = surround
 
 
         
         # Define input and output for normal training and inference
+        
+        #print("et voici le X", torch.tensor(dic_jo[phase]['X']).size())
+        if self.surround : 
+            #print("et voici le env", torch.tensor(dic_jo[phase]['env']).size())
+            self.envs_all = torch.tensor(dic_jo[phase]['env'])
+
+        
         self.inputs_all = torch.tensor(dic_jo[phase]['X'])
         """print(len(self.inputs_all))
         print(len(self.inputs_all[0]))
@@ -110,8 +119,16 @@ class KeypointsDataset(Dataset):
         outputs = self.outputs_all[idx]
         names = self.names_all[idx]
         kps = self.kps_all[idx, :]
+        if self.surround:
+            envs = self.envs_all[idx, :]
+        else:
+            envs = [None]*len(kps)
 
-        return inputs, outputs, names, kps
+        return inputs, outputs, names, kps, [None]*len(kps)
+    
+    def getenv(self, idx):
+        envs = self.envs_all[idx, :]
+
 
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster

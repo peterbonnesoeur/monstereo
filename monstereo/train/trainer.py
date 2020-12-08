@@ -39,7 +39,7 @@ class Trainer:
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
-                 confidence = False, transformer = False):
+                 confidence = False, transformer = False, surround = False):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -53,8 +53,7 @@ class Trainer:
         if not os.path.exists(dir_logs):
             warnings.warn("Warning: default logs directory not found")
         assert os.path.exists(joints), "Input file not found"
-        self.kps_3d = kps_3d
-        self.vehicles = vehicles
+
         self.dataset =dataset
         self.joints = joints
         self.num_epochs = epochs
@@ -79,6 +78,10 @@ class Trainer:
 
         self.confidence = confidence
         self.transformer = transformer
+        self.surround
+        self.kps_3d = kps_3d
+        self.vehicles = vehicles
+
 
         self.identifier = '' #Used to differentiate the training models
         if self.vehicles:
@@ -92,6 +95,9 @@ class Trainer:
         
         if self.transformer:
             self.identifier+="-transformer"
+
+        if self.surround:
+            self.identifier+="-surround"
 
         if self.kps_3d:
             self.identifier+="-kps_3d"
@@ -194,18 +200,19 @@ class Trainer:
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
                              "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} "
-                             "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \nTransformer: {}"
+                             "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \nTransformer: {} \Surround: {}"
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
                                      output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, 
-                                     kps_3d, process_mode, dropout_images, self.confidence,self.transformer))
+                                     kps_3d, process_mode, dropout_images, self.confidence,self.transformer, self.surround))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)
 
+        #! For now on, the transformer tag does not do anything to the Keypoint dataset loader
         # Dataloader
-        self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d),
+        self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer =self.transformer, surround = self.surround),
                                               batch_size=bs, shuffle=True) for phase in ['train', 'val']} #the drop_last flag is only there to forget the latest value o the dataset in case of a batch normalization where we don't have more than 1 input in the batch
-        self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d))
+        self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer = self.transformer, surround = self.surround))
                               for phase in ['train', 'val']}
 
         # Define the model
@@ -243,25 +250,77 @@ class Trainer:
                     self.model.eval()  # Set model to evaluate mode
 
                 #print("DATALOADERS",self.dataloaders)
-                for inputs, labels, _, _ in self.dataloaders[phase]:
-                    inputs = inputs.to(self.device)
-                    labels = labels.to(self.device)
-                    
-                    with torch.set_grad_enabled(phase == 'train'):
-                        if phase == 'train':
-                            outputs = self.model(inputs)
-                            loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
-                            self.optimizer.zero_grad()
-                            loss.backward()
-                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
-                            self.optimizer.step()
-                            self.scheduler.step()
 
+            for inputs, labels, _, _, envs in self.dataloaders[phase]:
+                inputs = inputs.to(self.device)
+                labels = labels.to(self.device)
+                if self.surround:
+                    envs = envs.to(self.device)
+
+                with torch.set_grad_enabled(phase == 'train'):
+                    if phase == 'train':
+                        if self.surround:
+                            outputs = self.model(inputs, env = envs)
                         else:
                             outputs = self.model(inputs)
-                        with torch.no_grad():
-                            loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
-                            self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
+                        loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
+                        self.optimizer.step()
+                        self.scheduler.step()
+
+                    else:
+                        if self.surround:
+                            outputs = self.model(inputs, env = envs)
+                        else:
+                            outputs = self.model(inputs)
+                    with torch.no_grad():
+                        loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
+                        self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
+
+                """if self.surround:
+                    for inputs, labels, envs, _ in self.dataloaders[phase]:
+                        inputs = inputs.to(self.device)
+                        labels = labels.to(self.device)
+                        envs = envs.to(self.device)
+
+                        with torch.set_grad_enabled(phase == 'train'):
+                            if phase == 'train':
+                                outputs = self.model(inputs, env = envs)
+                                loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
+                                self.optimizer.zero_grad()
+                                loss.backward()
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
+                                self.optimizer.step()
+                                self.scheduler.step()
+
+                            else:
+                                outputs = self.model(inputs, env = envs)
+                            with torch.no_grad():
+                                loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
+                                self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
+
+                else:
+                    for inputs, labels, _, _ in self.dataloaders[phase]:
+                        inputs = inputs.to(self.device)
+                        labels = labels.to(self.device)
+                        
+                        with torch.set_grad_enabled(phase == 'train'):
+                            if phase == 'train':
+                                outputs = self.model(inputs)
+                                loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
+                                self.optimizer.zero_grad()
+                                loss.backward()
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
+                                self.optimizer.step()
+                                self.scheduler.step()
+
+                            else:
+                                outputs = self.model(inputs)
+                            with torch.no_grad():
+                                loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
+                                self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)"""
 
             self.cout_values(epoch, epoch_losses, running_loss)
 
@@ -308,16 +367,20 @@ class Trainer:
         self.errors = defaultdict(list)
         self.errors_kps = defaultdict(list)
         dic_err['val']['sigmas'] = [0.] * len(self.tasks)
-        dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d)
+        dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d, transformer =self.transformer, surround = self.surround)
         size_eval = len(dataset)
         start = 0
         with torch.no_grad():
             for end in range(self.VAL_BS, size_eval + self.VAL_BS, self.VAL_BS):
                 end = end if end < size_eval else size_eval
-                inputs, labels, _, _ = dataset[start:end]
+                    
+                inputs, labels, _, _ , envs= dataset[start:end]
                 start = end
                 inputs = inputs.to(self.device)
                 labels = labels.to(self.device)
+                if self.surround:
+                    envs = envs.to(self.device)
+                
 
                 # Debug plot for input-output distributions
                 if debug:
@@ -325,7 +388,10 @@ class Trainer:
                     sys.exit()
 
                 # Forward pass
-                outputs = self.model(inputs)
+                if self.surround:
+                    outputs = self.model(inputs, envs)
+                else:
+                    outputs = self.model(inputs)
                 self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst='all')
 
             self.cout_stats(dic_err['val'], size_eval, clst='all')

@@ -107,7 +107,7 @@ class MyLinearSimple(nn.Module):
 
 class SimpleModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False):
+    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False, surround = False):
         super(SimpleModel, self).__init__()
 
         self.num_stage = num_stage
@@ -127,11 +127,22 @@ class SimpleModel(nn.Module):
         if self.transformer:
             assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
             # The max 
-            self.transformer = TransformerModel(ntoken = 2, ninp = 4, nhead = 2,  nhid = 3, nlayers = 3,  dropout = 0.2, kind = 'cat')
-            self.w1 = nn.Linear(int(self.stereo_size/3*2), self.linear_size)
+            ntoken = 2
+            if self.surround:
+                ntoken+=2
+            kind = "cat"
+            if kind == 'cat':
+                ninp = ntoken + 2
+            else:
+                ninp = ntoken
+            
+            print(ntoken, ninp, kind)
+            self.transformer = TransformerModel(ntoken = ntoken, ninp = ninp, nhead = 2,  nhid = 2, nlayers = 2,  dropout = 0.2, kind = kind)
+            self.w1 = nn.Linear(int(self.stereo_size/3*ntoken), self.linear_size)
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
-        self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
+        #self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
+        self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # Internal loop
         for _ in range(num_stage):
@@ -141,7 +152,8 @@ class SimpleModel(nn.Module):
         # Post processing
         self.w2 = nn.Linear(self.linear_size, self.linear_size)
         self.w3 = nn.Linear(self.linear_size, self.linear_size)
-        self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
+        #self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
+        self.group_norm3 =  nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # ------------------------Other----------------------------------------------
         # Auxiliary
@@ -158,10 +170,10 @@ class SimpleModel(nn.Module):
         mask = self.transformer.generate_square_subsequent_mask(sz)
         return mask
 
-    def forward(self, x):
+    def forward(self, x, env= None):
 
         if self.transformer:
-            y = self.transformer(x)
+            y = self.transformer(x, env)
             y = self.w1(y)
         else:
             y = self.w1(x)

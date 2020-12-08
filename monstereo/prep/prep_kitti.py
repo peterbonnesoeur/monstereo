@@ -38,16 +38,16 @@ class PreprocessKitti:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    dic_jo = {'train': dict(X=[], Y=[], names=[], kps=[], K=[],
+    dic_jo = {'train': dict(X=[], Y=[], names=[], kps=[], K=[], env = [],
                             clst=defaultdict(lambda: defaultdict(list))),
-              'val': dict(X=[], Y=[], names=[], kps=[], K=[],
+              'val': dict(X=[], Y=[], names=[], kps=[], K=[], env = [],
                           clst=defaultdict(lambda: defaultdict(list))),
-              'test': dict(X=[], Y=[], names=[], kps=[], K=[],
+              'test': dict(X=[], Y=[], names=[], kps=[], K=[], env = [],
                            clst=defaultdict(lambda: defaultdict(list)))}
     dic_names = defaultdict(lambda: defaultdict(list))
     dic_std = defaultdict(lambda: defaultdict(list))
 
-    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0, confidence=False, transformer = False):
+    def __init__(self, dir_ann, iou_min, monocular=False, vehicles=False, dropout =0, confidence=False, transformer = False, surround = False):
 
         self.vehicles = vehicles
         self.dir_ann = dir_ann
@@ -56,6 +56,7 @@ class PreprocessKitti:
         self.dropout = dropout
         self.confidence = confidence
         self.transformer = transformer
+        self.surround = surround
 
         #self.dir_gt = os.path.join('data', 'kitti', 'gt')
         self.dir_gt = os.path.join('data', 'kitti', 'training', "label_2")
@@ -80,6 +81,9 @@ class PreprocessKitti:
         if self.transformer:
             identifier+="transformer-"
 
+        if self.surround:
+            identifier+="surround-"
+
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
         name_out = 'ms-' + now_time + identifier+"prep"+".txt"
@@ -93,10 +97,11 @@ class PreprocessKitti:
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} \nmonocular: {}"
                          "\nvehicles: {} \niou_min: {} \nprocess_mode : {} \nDropout images: {} "
-                         "\nConfidence keypoints: {} \nTransformer: {}".format(dir_ann, monocular, vehicles, iou_min, process_mode, dropout, confidence, transformer))
+                         "\nConfidence keypoints: {} \nTransformer: {} \nSurround: {}".format(dir_ann, monocular,
+                          vehicles, iou_min, process_mode, dropout, confidence, transformer, surround))
 
-        self.path_joints = os.path.join(dir_out, 'joints-kitti-' +identifier + now_time + '.json')
-        self.path_names = os.path.join(dir_out, 'names-kitti-' +identifier + now_time + '.json')
+        self.path_joints = os.path.join(dir_out, 'joints-kitti' +identifier + now_time + '.json')
+        self.path_names = os.path.join(dir_out, 'names-kitti' +identifier + now_time + '.json')
         path_train = os.path.join('splits', 'kitti_train.txt')
         path_val = os.path.join('splits', 'kitti_val.txt')
         self.set_train, self.set_val = split_training(self.names_gt, path_train, path_val)
@@ -216,6 +221,10 @@ class PreprocessKitti:
                         keypoints, keypoints_r = torch.tensor(all_keypoints[ii]), torch.tensor(all_keypoints_r[ii])
                         ys = all_ys[ii]
                         matches = get_iou_matches(all_boxes[ii], boxes_gt, self.iou_min)
+
+                        keypoints_raw = preprocess_monoloco(keypoints, kk, confidence=self.confidence)
+                        if self.surround:
+                            surrounds = dist_angle_array(keypoints_raw)
                         for (idx, idx_gt) in matches:
                             keypoint = keypoints[idx:idx + 1]
                             lab = ys[idx_gt][:-1]
@@ -226,13 +235,20 @@ class PreprocessKitti:
                                 occluded_keypoints[phase].append(occ_kps)
                                 inp = preprocess_monoloco(keypoint, kk, confidence=self.confidence).view(-1).tolist()
                                 #print("INP", inp)
+                                if self.surround:
+                                    surround = surrounds[idx]
                                 lab = normalize_hwl(lab)
                                 if ys[idx_gt][10] < 0.5:
                                     self.dic_jo[phase]['kps'].append(keypoint.tolist())
+                                    if self.surround:
+                                        self.dic_jo[phase]['env'].append(surround.tolist())
                                     self.dic_jo[phase]['X'].append(inp)
                                     self.dic_jo[phase]['Y'].append(lab)
                                     self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
-                                    append_cluster(self.dic_jo, phase, inp, lab, keypoint.tolist())
+                                    if self.surround:
+                                        append_cluster_transformer(self.dic_jo, phase, inp, lab, keypoint.tolist(), surround.tolist())
+                                    else:
+                                        append_cluster(self.dic_jo, phase, inp, lab, keypoint.tolist())
                                     cnt_mono[phase] += 1
                                     cnt_tot += 1
 
@@ -450,3 +466,84 @@ def crop_and_draw(im, box, keypoint):
     w_crop = crop.shape[1]
 
     return crop, h_crop, w_crop
+
+def dist_angle_array(keypoints_list, base_dim = 10):
+    from einops import rearrange
+
+    assert keypoints_list.size()[1]%3 == 0, "You need the confidence on this one"
+    assert base_dim%2 == 0, "We want to have a vector for both the angles and distnces. For this, the base dim needs to be a multiple of 2"
+
+    keypoints_list = rearrange(keypoints_list, 'b (n d) -> b n d', d = 3)
+
+    conf_masks = keypoints_list[:,:, -1]>0
+    #print(conf_masks.size(), keypoints_list.size()  ,keypoints_list[0][conf_masks[0]].size())
+    #print(keypoints_list[0], conf_masks[0], keypoints_list[0][conf_masks[0]])
+    
+    #? Here, we compute the mean values of each sets of keypoints and we only use the keypoints with a confidence > 0
+    means = [torch.mean(torch.Tensor(keypoints)[conf_mask], dim =0)[:2] for keypoints, conf_mask in zip(keypoints_list, conf_masks)]
+
+    #print(means)
+    
+    means = torch.stack(means)
+    #print(means)
+    dists = []
+    angles = []
+
+    v = torch.Tensor([1,0])
+    for mean in means:
+        #print(means,mean)
+        #print(torch.norm(means-mean))
+        #print("here",torch.norm(means-mean, dim = 1),list(torch.sort(torch.norm(means-mean, dim = 1)))[1:])
+        dist, arg =  torch.sort(torch.norm(means-mean, dim = 1))
+        #print(dist[1:], arg[1:])
+        dists.append(dist[1:])
+        args = arg[1:]
+        
+        #angles.append(np.array([np.dot(u,v)/np.linalg.norm(u)/np.linalg.norm(v) for u in (means-mean)  ])[args] )
+        #print([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])
+        angles.append(torch.stack([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])[args] )
+      
+    dists = torch.stack(dists)
+    angles = torch.stack(angles)
+    #print(angles, dists)
+        
+    vec_dist = torch.zeros((len(keypoints_list), base_dim))
+    #print(vec_dist)
+    for j in range(len(keypoints_list)):
+        for i in range(min ( int(base_dim/2), len(angles[0]))):
+
+            #print(i,j, dists[j])
+            vec_dist[j, i*2] = dists[j, i]
+            vec_dist[j,i*2+1] = angles[j, i]
+    
+    #print(vec_dist)
+    return vec_dist
+
+def append_cluster_transformer(dic_jo, phase, xx, ys, kps, surround):
+    """Append the annotation based on its distance"""
+
+    if ys[3] <= 10:
+        dic_jo[phase]['clst']['10']['kps'].append(kps)
+        dic_jo[phase]['clst']['10']['X'].append(xx)
+        dic_jo[phase]['clst']['10']['Y'].append(ys)
+        dic_jo[phase]['clst']['10']['env'].append(surround)
+    elif ys[3] <= 20:
+        dic_jo[phase]['clst']['20']['kps'].append(kps)
+        dic_jo[phase]['clst']['20']['X'].append(xx)
+        dic_jo[phase]['clst']['20']['Y'].append(ys)
+        dic_jo[phase]['clst']['20']['env'].append(surround)
+    elif ys[3] <= 30:
+        dic_jo[phase]['clst']['30']['kps'].append(kps)
+        dic_jo[phase]['clst']['30']['X'].append(xx)
+        dic_jo[phase]['clst']['30']['Y'].append(ys)
+        dic_jo[phase]['clst']['30']['env'].append(surround)
+    elif ys[3] < 50:
+        dic_jo[phase]['clst']['50']['kps'].append(kps)
+        dic_jo[phase]['clst']['50']['X'].append(xx)
+        dic_jo[phase]['clst']['50']['Y'].append(ys)
+        dic_jo[phase]['clst']['50']['env'].append(surround)
+    else:
+        dic_jo[phase]['clst']['>50']['kps'].append(kps)
+        dic_jo[phase]['clst']['>50']['X'].append(xx)
+        dic_jo[phase]['clst']['>50']['Y'].append(ys)
+        dic_jo[phase]['clst']['>50']['env'].append(surround)

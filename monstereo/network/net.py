@@ -24,12 +24,13 @@ class Loco:
     LINEAR_SIZE_MONO = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False, transformer = False):
+    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False, transformer = False, surround = False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
         self.confidence = confidence
         self.transformer = transformer
+        self.surround = surround
 
         assert self.net in ('monstereo', 'monoloco', 'monoloco_p', 'monoloco_pp')
         if self.net == 'monstereo':
@@ -91,7 +92,7 @@ class Loco:
                                            output_size=output_size)
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
-                                         linear_size=linear_size, device=self.device, transformer = transformer)
+                                         linear_size=linear_size, device=self.device, transformer = transformer, surround = self.surround)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
         else:
@@ -125,7 +126,11 @@ class Loco:
 
             elif self.net == 'monoloco_pp':
                 inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
-                outputs = self.model(inputs)
+                if self.surround:
+                    envs = dist_angle_array(inputs)
+                    outputs = self.model(inputs, envs)
+                else:
+                    outputs = self.model(inputs)
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:
@@ -334,3 +339,57 @@ def median_disparity(dic_out, keypoints, keypoints_r, mask):
                 dic_out['xyzd'][idx][2] = z
                 dic_out['xyzd'][idx][3] = torch.norm(dic_out['xyzd'][idx][0:3])
     return dic_out
+
+def dist_angle_array(keypoints_list, base_dim = 10):
+    from einops import rearrange
+
+    assert keypoints_list.size()[1]%3 == 0, "You need the confidence on this one"
+    assert base_dim%2 == 0, "We want to have a vector for both the angles and distnces. For this, the base dim needs to be a multiple of 2"
+
+    device = keypoints_list.device
+    print("MY DEVICE", device)
+    keypoints_list = rearrange(keypoints_list, 'b (n d) -> b n d', d = 3)
+
+    conf_masks = keypoints_list[:,:, -1]>0
+    #print(conf_masks.size(), keypoints_list.size()  ,keypoints_list[0][conf_masks[0]].size())
+    #print(keypoints_list[0], conf_masks[0], keypoints_list[0][conf_masks[0]])
+    
+    #? Here, we compute the mean values of each sets of keypoints and we only use the keypoints with a confidence > 0
+    means = [torch.mean(torch.Tensor(keypoints).to(device)[conf_mask], dim =0)[:2] for keypoints, conf_mask in zip(keypoints_list, conf_masks)]
+
+    #print(means)
+    
+    means = torch.stack(means)
+    #print(means)
+    dists = []
+    angles = []
+
+    v = torch.Tensor([1,0])
+    for mean in means:
+        #print(means,mean)
+        #print(torch.norm(means-mean))
+        #print("here",torch.norm(means-mean, dim = 1),list(torch.sort(torch.norm(means-mean, dim = 1)))[1:])
+        dist, arg =  torch.sort(torch.norm(means-mean, dim = 1))
+        #print(dist[1:], arg[1:])
+        dists.append(dist[1:])
+        args = arg[1:]
+        
+        #angles.append(np.array([np.dot(u,v)/np.linalg.norm(u)/np.linalg.norm(v) for u in (means-mean)  ])[args] )
+        #print([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])
+        angles.append(torch.stack([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])[args] )
+      
+    dists = torch.stack(dists)
+    angles = torch.stack(angles)
+    #print(angles, dists)
+        
+    vec_dist = torch.zeros((len(keypoints_list), base_dim))
+    #print(vec_dist)
+    for j in range(len(keypoints_list)):
+        for i in range(min ( int(base_dim/2), len(angles[0]))):
+
+            #print(i,j, dists[j])
+            vec_dist[j, i*2] = dists[j, i]
+            vec_dist[j,i*2+1] = angles[j, i]
+    
+    #print(vec_dist)
+    return vec_dist

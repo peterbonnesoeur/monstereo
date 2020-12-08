@@ -29,7 +29,7 @@ class GenerateKitti:
     METHODS = ['monoloco_pp']
 
 
-    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, model_mono = None, confidence = False, transformer = False):
+    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, model_mono = None, confidence = False, transformer = False, surround = False):
 
         # Load monoloco
         use_cuda = torch.cuda.is_available()
@@ -37,7 +37,7 @@ class GenerateKitti:
 
         if 'monstereo' in self.METHODS:
             self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, p_dropout=p_dropout,
-                                  linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer)
+                                  linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer, surround = surround)
         
 
         if 'monoloco_pp' in self.METHODS:
@@ -51,7 +51,7 @@ class GenerateKitti:
             else:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
-                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer)
+                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer, surround)
 
         if 'monoloco' in self.METHODS:
             model_mono = 'data/models/monoloco-190717-0952.pkl'  # KITTI
