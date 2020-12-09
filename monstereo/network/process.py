@@ -7,6 +7,8 @@ import torch
 import torchvision
 import torch
 import random
+from einops import rearrange
+
 
 from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles
 
@@ -546,3 +548,65 @@ def keypoints_dropout(keypoints, dropout = 0 ,nb_dim =2, kps_3d = False):
         #print("NUM OCCLUDED ", (keypoints[i,nb_dim, :]<=0).sum() )
         occluded_kps.append((keypoints[i,nb_dim, :]<=0).sum())
     return keypoints, length_keypoints, occluded_kps
+
+def dist_angle_array(keypoints_list, base_dim = 10):
+
+    assert keypoints_list.size()[1]%3 == 0, "You need the confidence on this one"
+    assert base_dim%2 == 0, "We want to have a vector for both the angles and distnces. For this, the base dim needs to be a multiple of 2"
+
+    device = keypoints_list.device
+    #print("MY DEVICE", device)
+    keypoints_list = rearrange(keypoints_list, 'b (n d) -> b n d', d = 3)
+
+    conf_masks = keypoints_list[:,:, -1]>0
+    conf_masks = conf_masks.to(device)
+    #print(conf_masks.device, keypoints_list.device )
+    #print(conf_masks.size(), keypoints_list.size()  ,keypoints_list[0][conf_masks[0]].size())
+    #print(keypoints_list[0], conf_masks[0], keypoints_list[0][conf_masks[0]])
+    
+    #? Here, we compute the mean values of each sets of keypoints and we only use the keypoints with a confidence > 0
+    #means = []
+    #for keypoints, conf_mask in zip(keypoints_list, conf_masks):
+    #    keypoints=keypoints.to(device)
+    #    conf_mask=conf_mask.to(device)
+    #    a = keypoints
+    #    a = a[conf_mask]
+    #    means.append(torch.mean(a, dim =0)[:2])
+    means = [torch.mean(keypoints[conf_mask], dim =0)[:2] for keypoints, conf_mask in zip(keypoints_list, conf_masks)]
+
+    #print(means)
+    
+    means = torch.stack(means)
+    #print(means.device)
+    dists = []
+    angles = []
+
+    v = torch.Tensor([1,0]).to(device)
+    for mean in means:
+        #print(means,mean)
+        #print(torch.norm(means-mean))
+        #print("here",torch.norm(means-mean, dim = 1),list(torch.sort(torch.norm(means-mean, dim = 1)))[1:])
+        dist, arg =  torch.sort(torch.norm(means-mean, dim = 1))
+        #print(dist[1:], arg[1:])
+        dists.append(dist[1:])
+        args = arg[1:]
+        
+        #angles.append(np.array([np.dot(u,v)/np.linalg.norm(u)/np.linalg.norm(v) for u in (means-mean)  ])[args] )
+        #print([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])
+        angles.append(torch.stack([torch.dot(u,v)/torch.norm(u)/torch.norm(v) for u in (means-mean)  ])[args] )
+    
+    dists = torch.stack(dists)
+    angles = torch.stack(angles)
+    #print(angles, dists)
+        
+    vec_dist = torch.zeros((len(keypoints_list), base_dim)).to(device)
+    #print(vec_dist)
+    for j in range(len(keypoints_list)):
+        for i in range(min ( int(base_dim/2), len(angles[0]))):
+
+            #print(i,j, dists[j])
+            vec_dist[j, i*2] = dists[j, i]
+            vec_dist[j,i*2+1] = angles[j, i]
+    
+    #print(vec_dist)
+    return vec_dist

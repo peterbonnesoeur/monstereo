@@ -5,6 +5,7 @@ from torch import Tensor
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 import math
+import numpy as np
 from einops import rearrange, repeat
 
 
@@ -73,7 +74,7 @@ class Attention(nn.Module):
         mask_value = -torch.finfo(dots.dtype).max
 
         if mask is not None:
-            print("Size analysis",dots.size(), mask.size())
+            #print("Size analysis",dots.size(), mask.size())
             #mask = F.pad(mask.flatten(1), (1, 0), value = True)
             #print(mask.size(), mask.shape[-1], dots.shape[-1])
             assert mask.shape[-1] == dots.shape[-1], 'mask has incorrect dimensions'
@@ -126,10 +127,10 @@ class InputEmbedding(nn.Module):
         
         assert x.size(1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
         
-        kps = rearrange(x, 'b (n t) -> b n t', t = 3)
-        mask = self.generate_mask_keypoints(kps)
+        out = rearrange(x, 'b (n t) -> b n t', t = 3)
+        mask = self.generate_mask_keypoints(out)
         
-        out = self.conf_remover(kps, mask)
+        #out = self.conf_remover(out)
 
         if surround is not None:
             surround = surround.unsqueeze(1).repeat(1, out.size(1),1)
@@ -147,7 +148,7 @@ class InputEmbedding(nn.Module):
     
 
     
-    def conf_remover(self, src, mask):
+    def conf_remover(self, src):
         return src[:,:,:2]
     
     def generate_mask_keypoints(self,kps):
@@ -193,7 +194,8 @@ class Encoder(nn.Module):
             #print("encoder number : ", i)
             #print("MASK is :", mask)
             if mask is not None:
-                print(mask.size())
+                pass
+                #print(mask.size())
             out = layer(out, mask )
         return out
 
@@ -245,7 +247,7 @@ class Decoder(nn.Module):
     
     def decoder_mask(self, mask):
         n = len(mask)
-        print("BEGIN MASK",mask)
+        #print("BEGIN MASK",mask)
         look_ahead = np.tril(np.ones(n))
         return mask * look_ahead
         
@@ -270,4 +272,7 @@ class Transformer(nn.Module):
         
         encoder_out = self.encoder(encoder_input, surround = surround, mask = encoder_mask)
         decoder_out = self.decoder(decoder_input, encoder_out, surround = surround, mask = decoder_mask)
-        return torch.softmax(self.linear(decoder_out), dim=0)
+        return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
+
+        #return rearrange(torch.softmax(self.linear(decoder_out), dim=0), 'b n t -> b (n t)')
+        

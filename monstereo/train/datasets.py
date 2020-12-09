@@ -122,9 +122,9 @@ class KeypointsDataset(Dataset):
         if self.surround:
             envs = self.envs_all[idx, :]
         else:
-            envs = [None]*len(kps)
+            envs = self.inputs_all[idx, :]
 
-        return inputs, outputs, names, kps, [None]*len(kps)
+        return inputs, outputs, names, kps, envs
     
     def getenv(self, idx):
         envs = self.envs_all[idx, :]
@@ -135,7 +135,7 @@ class KeypointsDataset(Dataset):
         """
         if clst not in list(self.dic_clst.keys()):
             print("Cluster {} not in the data list :{}", clst, list(self.dic_clst.keys()))
-            return None, None, None
+            return None, None, None, None
 
         inputs = torch.tensor(self.dic_clst[clst]['X'])
 
@@ -155,6 +155,11 @@ class KeypointsDataset(Dataset):
             self.dic_clst[clst]['Y'] = glob_list
 
         outputs = torch.tensor(self.dic_clst[clst]['Y']).float()
+        
+        if self.surround:
+            envs = torch.tensor(self.dic_clst[clst]['env']).float()
+        else:
+            envs = inputs
         count = len(self.dic_clst[clst]['Y'])
-
-        return inputs, outputs, count
+        print("HERE FFF")
+        return inputs, outputs, count, envs

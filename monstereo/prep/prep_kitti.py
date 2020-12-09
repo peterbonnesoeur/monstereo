@@ -18,7 +18,7 @@ import cv2
 
 from ..utils import split_training, parse_ground_truth, get_iou_matches, append_cluster, factory_file, \
     extract_stereo_matches, get_category, normalize_hwl, make_new_directory, set_logger
-from ..network.process import preprocess_pifpaf, preprocess_monoloco, keypoints_dropout
+from ..network.process import preprocess_pifpaf, preprocess_monoloco, keypoints_dropout, dist_angle_array
 from .transforms import flip_inputs, flip_labels, height_augmentation
 
 
@@ -241,6 +241,7 @@ class PreprocessKitti:
                                 if ys[idx_gt][10] < 0.5:
                                     self.dic_jo[phase]['kps'].append(keypoint.tolist())
                                     if self.surround:
+                                        #print(surround, inp)
                                         self.dic_jo[phase]['env'].append(surround.tolist())
                                     self.dic_jo[phase]['X'].append(inp)
                                     self.dic_jo[phase]['Y'].append(lab)
@@ -467,7 +468,7 @@ def crop_and_draw(im, box, keypoint):
 
     return crop, h_crop, w_crop
 
-def dist_angle_array(keypoints_list, base_dim = 10):
+def dist_angle_array_old(keypoints_list, base_dim = 10):
     from einops import rearrange
 
     assert keypoints_list.size()[1]%3 == 0, "You need the confidence on this one"
@@ -485,7 +486,6 @@ def dist_angle_array(keypoints_list, base_dim = 10):
     #print(means)
     
     means = torch.stack(means)
-    #print(means)
     dists = []
     angles = []
 

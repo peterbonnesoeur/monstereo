@@ -51,7 +51,7 @@ class GenerateKitti:
             else:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
-                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer, surround)
+                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer, surround= surround)
 
         if 'monoloco' in self.METHODS:
             model_mono = 'data/models/monoloco-190717-0952.pkl'  # KITTI
@@ -94,7 +94,8 @@ class GenerateKitti:
         dir_out = {key: os.path.join('data', 'kitti', key) for key in self.METHODS}
         print("\n")
         for key in self.METHODS:
-            make_new_directory(dir_out[key])
+            pass
+            #make_new_directory(dir_out[key])
 
         for key in self.baselines:
             dir_out[key] = os.path.join('data', 'kitti', key)

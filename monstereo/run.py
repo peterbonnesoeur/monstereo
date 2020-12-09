@@ -4,7 +4,8 @@ import argparse
 
 #from openpifpaf.network import nets
 #from openpifpaf import decoder
-
+import os
+os.environ['JOBLIB_TEMP_FOLDER'] = '/tmp'
 
 def cli():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -161,7 +162,7 @@ def main():
 
         else:
             from .prep.prep_kitti import PreprocessKitti
-            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer)
+            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer, surround = args.surround)
             if args.activity:
                 prep.prep_activity()
             else:
