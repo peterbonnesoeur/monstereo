@@ -162,8 +162,8 @@ class TransformerModel(nn.Module):
             self.pos_encoder = PositionalEncoding(ntoken, dropout, kind = kind) # Here, we try a different kind of pos encoder which is using concatination functions
         
    
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        #encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        #self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         
         self.ninp = ninp
         self.decoder = nn.Linear(ninp, ntoken)
@@ -209,7 +209,7 @@ class TransformerModel(nn.Module):
 
         mask = self.generate_mask_keypoints(src).clone().detach()
         
-        src = self.conf_remover(src)
+        #src = self.conf_remover(src)
 
         if env is not None:
             #print("env dimensions are :", env.size(), src.size())

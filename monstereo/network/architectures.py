@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from .transformer import TransformerModel
+from .transformer_2 import Transformer as TransformerModel_2
 
 
 class SimpleModel_old(nn.Module):
@@ -120,6 +121,7 @@ class SimpleModel(nn.Module):
         self.linear_stages = []
         self.device = device
         self.transformer = transformer
+        self.surround = surround
 
         # Initialize weights
 
@@ -127,9 +129,9 @@ class SimpleModel(nn.Module):
         if self.transformer:
             assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
             # The max 
-            ntoken = 2
+            ntoken = 3
             if self.surround:
-                ntoken+=2
+                ntoken+=10
             kind = "cat"
             if kind == 'cat':
                 ninp = ntoken + 2
@@ -137,7 +139,9 @@ class SimpleModel(nn.Module):
                 ninp = ntoken
             
             print(ntoken, ninp, kind)
-            self.transformer = TransformerModel(ntoken = ntoken, ninp = ninp, nhead = 2,  nhid = 2, nlayers = 2,  dropout = 0.2, kind = kind)
+            self.transformer = TransformerModel(ntoken = ntoken, ninp = ninp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = 0.2, kind = kind)
+           
+            self.transformer_2=  TransformerModel_2(n_base_words = ntoken, n_target_words = ntoken, n_token = ntoken, kind = kind, embed_dim = ninp, num_heads = 2, n_layers = 4) 
             self.w1 = nn.Linear(int(self.stereo_size/3*ntoken), self.linear_size)
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
@@ -173,7 +177,8 @@ class SimpleModel(nn.Module):
     def forward(self, x, env= None):
 
         if self.transformer:
-            y = self.transformer(x, env)
+            #y = self.transformer(x, env)
+            y = self.transformer_2(x,x, env)
             y = self.w1(y)
         else:
             y = self.w1(x)
