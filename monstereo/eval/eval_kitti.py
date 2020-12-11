@@ -160,9 +160,9 @@ class EvalKitti:
     def printer(self, show, save):
 
         if self.vehicles:
-            identifier = "_car"
-        else:
             identifier = "_vehicles"
+        else:
+            identifier = "_human"
 
         
         if save or show:
