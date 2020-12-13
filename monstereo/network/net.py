@@ -24,13 +24,17 @@ class Loco:
     LINEAR_SIZE_MONO = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, vehicles = False, kps_3d = False, confidence=False, transformer = False, surround = False):
+    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, 
+                vehicles = False, kps_3d = False, confidence=False, transformer = False, surround = False, 
+                lstm = False, scene_disp = False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
         self.confidence = confidence
         self.transformer = transformer
         self.surround = surround
+        self.lstm = lstm
+        self.scene_disp = scene_disp
 
         assert self.net in ('monstereo', 'monoloco', 'monoloco_p', 'monoloco_pp')
         if self.net == 'monstereo':
@@ -92,7 +96,8 @@ class Loco:
                                            output_size=output_size)
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
-                                         linear_size=linear_size, device=self.device, transformer = transformer, surround = self.surround)
+                                         linear_size=linear_size, device=self.device, transformer = transformer, 
+                                         surround = self.surround, lstm = self.lstm, scene_disp = self.scene_disp)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
         else:
@@ -130,7 +135,13 @@ class Loco:
                     envs = dist_angle_array(inputs)
                     outputs = self.model(inputs, envs)
                 else:
+                    if len(inputs.size())<3:
+                        inputs = inputs.unsqueeze(0)
+                    #print("INPUTS SIZE", inputs.size(), len(inputs.size()))
+
                     outputs = self.model(inputs)
+                    if self.scene_disp:
+                        outputs= self.model.get_output(inputs, outputs)
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:

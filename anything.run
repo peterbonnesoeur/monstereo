@@ -10,4 +10,6 @@
 #SBATCH --time 24:00:00
 
 
-python3 -m monstereo.run eval --dir_ann data/kitti-pifpaf/annotations --model nope  --model_mono data/models/ms-201207-194659-transformer-kitti.pkl --generate --save --verbose --confidence --transformer
+python3 -m  monstereo.run train --epochs 200 --dataset kitti --joints data/arrays/joints-kitti-transformer-201209-093906.json --hidden_size 1024 --monocular --dataset kitti --save --confidence --transformer
+
+#python3 -m  monstereo.run train --epochs 200  --joints data/arrays/joints-kitti-vehicles-transformer-201209-094856.json --hidden_size 1024 --monocular --vehicles --dataset kitti --save --confidence --transformer

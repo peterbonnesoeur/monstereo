@@ -37,6 +37,10 @@ def cli():
     prep_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     prep_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     prep_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    prep_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
+    prep_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
+
+
 
 
     # Predict (2D pose and/or 3D location from images)
@@ -104,6 +108,10 @@ def cli():
     training_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     training_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     training_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    training_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
+    training_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
+
+    
     # Evaluation
     eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
     eval_parser.add_argument('--geometric', help='to evaluate geometric distance', action='store_true')
@@ -129,6 +137,9 @@ def cli():
     eval_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     eval_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     eval_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    eval_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
+    eval_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
+
     
     args = parser.parse_args()
     return args
@@ -176,7 +187,8 @@ def main():
                                    multiplier=args.multiplier, r_seed=args.r_seed, 
                                    vehicles = args.vehicles, kps_3d = args.kps_3d,
                                    dataset = args.dataset, confidence = args.confidence,
-                                   transformer = args.transformer, surround = args.surround)
+                                   transformer = args.transformer, surround = args.surround,
+                                   lstm = args.lstm, scenes_disp = args.scene_disp)
             hyp_tuning.train()
         else:
 
@@ -186,7 +198,7 @@ def main():
                                n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
                                r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.kps_3d,
                                dataset = args.dataset, confidence = args.confidence, transformer = args.transformer,
-                               surround = args.surround)
+                               surround = args.surround, lstm = args.lstm, scene_disp= args.scene_disp)
 
             _ = training.train()
             _ = training.evaluate()
@@ -215,7 +227,8 @@ def main():
                 from .eval.generate_kitti import GenerateKitti
                 kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
                                           hidden_size=args.hidden_size, vehicles = args.vehicles, model_mono = args.model_mono,
-                                          confidence = args.confidence, transformer = args.transformer, surround = args.surround)
+                                          confidence = args.confidence, transformer = args.transformer, surround = args.surround,
+                                          lstm = args.lstm, scene_disp = args.scene_disp)
                 kitti_txt.run()
 
             if args.dataset == 'kitti':

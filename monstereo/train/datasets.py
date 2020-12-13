@@ -1,6 +1,7 @@
 
 import json
 import torch
+import numpy as np
 
 from torch.utils.data import Dataset
 
@@ -46,7 +47,7 @@ class KeypointsDataset(Dataset):
     Dataloader from nuscenes or kitti datasets
     """
 
-    def __init__(self, joints, phase, kps_3d = False, transformer = False, surround = False):
+    def __init__(self, joints, phase, kps_3d = False, transformer = False, surround = False, scene_disp = False):
         """
         Load inputs and outputs from the pickles files from gt joints, mask joints or both
         """
@@ -59,8 +60,7 @@ class KeypointsDataset(Dataset):
         self.kps_3d = kps_3d
         self.transformer = transformer
         self.surround = surround
-
-
+        self.scene_disp = scene_disp
         
         # Define input and output for normal training and inference
         
@@ -92,17 +92,13 @@ class KeypointsDataset(Dataset):
         #print("GLOABL LIST", glob_list[:5])
 
         self.outputs_all = torch.tensor(dic_jo[phase]['Y'] )
-        print(len(self.outputs_all))
-        print(len(self.outputs_all[0]))
-        print(self.outputs_all[0][0])
         self.names_all = dic_jo[phase]['names']
         self.kps_all = torch.tensor(dic_jo[phase]['kps'])
-        # Extract annotations divided in clusters
+
+        if self.scene_disp:
+            self.scene_disposition_dataset()
+
         self.dic_clst = dic_jo[phase]['clst']
-        """print(self.dic_clst.keys())
-        print(self.dic_clst[list(self.dic_clst.keys())[0]].keys())
-        print(phase)"""
-        #print(self.dic_clst['10']['kps'][0])
 
     def __len__(self):
         """
@@ -119,17 +115,83 @@ class KeypointsDataset(Dataset):
         outputs = self.outputs_all[idx]
         names = self.names_all[idx]
         kps = self.kps_all[idx, :]
+
+        assert not (self.surround and self.scene_disp), "The surround techniuqe is not compatible with the batch sizes that akes into account the whole scene"
+
         if self.surround:
             envs = self.envs_all[idx, :]
         else:
             envs = self.inputs_all[idx, :]
 
         return inputs, outputs, names, kps, envs
+
+ 
+    def scene_disposition_dataset(self):
+        
+        threshold = 40
+        
+        
+        print(len(np.unique(self.names_all)), len(self.names_all))
+        inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
+            
+        output_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.outputs_all.size(-1))
+
+        output_v2 = torch.zeros(self.outputs_all.size())
+        
+        kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
+        
+        kps_v2 = torch.zeros(self.kps_all.size())
+        
+        old_name = None
+        name_index = 0
+        instance_index = 0
+        
+        print(np.argsort(self.names_all), np.sort(self.names_all))
+
+        for i, index in enumerate(np.argsort(self.names_all)):
+            #if old_name is None:
+            #    inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
+            #    outputs_new[name_index,instance_index,: ] = self.outputs_all[index]
+            #    kps_new[name_index,instance_index,: ] = self.kps_all[index]
+               
+        
+            if instance_index >= threshold and old_name == self.names_all[index]:
+                print("Too many cars in the images", self.names_all[index])
+                pass
+            elif old_name != self.names_all[index]:
+                instance_index = 0
+                if old_name is not None:
+                    name_index+=1
+                
+                #print(name_index, self.names_all[index], old_name, index)
+                old_name = self.names_all[index]
+                
+                
+                inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
+                output_new[name_index,instance_index,: ] = self.outputs_all[index]
+                output_v2[i] = self.outputs_all[index]
+                kps_new[name_index,instance_index,: ] = self.kps_all[index]
+                kps_v2[i] = self.kps_all[index]
+                
+                instance_index+=1
+                
+                
+            else:
+                inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
+                output_new[name_index,instance_index,: ] = self.outputs_all[index]
+                output_v2[i] = self.outputs_all[index]
+                kps_new[name_index,instance_index,: ] = self.kps_all[index]
+                kps_v2[i] = self.kps_all[index]
+                
+                instance_index+=1
+                
+        
+        
+        self.outputs_all = output_new
+        self.inputs_all = inputs_new
+        self.kps_all = kps_new
+        
     
-    def getenv(self, idx):
-        envs = self.envs_all[idx, :]
-
-
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster
         """
@@ -161,5 +223,4 @@ class KeypointsDataset(Dataset):
         else:
             envs = inputs
         count = len(self.dic_clst[clst]['Y'])
-        print("HERE FFF")
         return inputs, outputs, count, envs

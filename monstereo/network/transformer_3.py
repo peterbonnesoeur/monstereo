@@ -29,12 +29,7 @@ class PositionalEncoding(nn.Module):
             pe = self.pe.permute(1,0, 2).repeat(x.size(0),1, 1)
             x = x + pe[:, :x.size(1)]
         elif self.kind == "cat":
-            #print(self.pe)
-            #print("SIZES", x.size(), self.pe.size(), self.pe.permute(1,0, 2).repeat(x.size(0),1, 1).size())
             pe = self.pe.permute(1,0, 2).repeat(x.size(0),1, 1)
-            #print("SIZES", x.size(), pe[:, :x.size(1)].size())
-            #print(pe)
-            #! To prettify
             x = torch.cat((x, pe[:, :x.size(1)]), dim = 2)
             #print(x)
             return x
@@ -62,10 +57,7 @@ class Attention(nn.Module):
         K_vec = rearrange(K_vec, 'b n (h d) -> b h n d', h = h)
         Q_vec = rearrange(Q_vec, 'b n (h d) -> b h n d', h = h)
         V_vec = rearrange(V_vec, 'b n (h d) -> b h n d', h = h)
-        #print(K_vec.size())
-        #K = K_vec @ self.W_K
-        #Q = Q_vec @ self.W_Q
-        #V = V_vec @ self.W_V
+
         q = self.W_Q(Q_vec)
         v = self.W_V(V_vec)
         k = self.W_K(K_vec)
@@ -108,11 +100,12 @@ class MultiHeadAttention(nn.Module):
         return self.linear(torch.cat(results, dim=2))
 
 class InputEmbedding(nn.Module):
-    def __init__(self, n_words, n_embed, n_token, max_len=100, kind = "add"):
+    def __init__(self, n_words, n_embed, n_token, max_len=100, kind = "add", confidence = True, scene_disp = False):
         super().__init__()
         self.n_embed = n_embed
-        #self.embedding = nn.Embedding(n_words, n_embed, )
-        #self.position_emb = nn.Embedding.from_pretrained(       torch.Tensor(pos_fun(max_len, n_embed)), freeze=True)
+        
+        self.confidence = confidence
+        self.scene_disp = scene_disp
         if kind == "cat":
             self.position_emb =  PositionalEncoding(2, kind = kind, max_len = max_len)
         else:
@@ -120,39 +113,52 @@ class InputEmbedding(nn.Module):
     def forward(self, x, surround = None):
 
         
-        if len (x.size()) == 3:
-            print("second loop")
-            return x, torch.ones(x.size()[:-1])* True
+        assert x.size(-1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
+        
+        if self.scene_disp:
+            out = rearrange(x, 'b x (n d) -> b x n d', d = 3)
 
-        
-        assert x.size(1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
-        
-        out = rearrange(x, 'b (n t) -> b n t', t = 3)
-        mask = self.generate_mask_keypoints(out)
-        
-        #out = self.conf_remover(out)
+            if not self.confidence:
+                out= self.conf_remover(out)
 
-        if surround is not None:
-            surround = surround.unsqueeze(1).repeat(1, out.size(1),1)
-            out = torch.cat((out, surround), dim = 2)
-        out =self.position_emb(out)
-        
-        out[mask == False] = 0
-        
-        
-        return out, mask
-        #return out.permute(1,0,2), mask
-        #idx = torch.arange(0, len(x), device=x.device, dtype=x.dtype)
-        #self.embedding(x) + self.position_emb(idx)
+            out = rearrange(out, 'b x n d -> b x (n d)')
+
+
+            mask = torch.sum(out, dim = 2)!=0
+
+            #print(mask)
+
+            out =self.position_emb(out)
+
+            return out, mask
     
-    
+        else:
+            if len (x.size()) == 3:
+                print("second loop")
+            
+                return x, torch.ones(x.size()[:-1])* True
+            
+            kps = rearrange(x, 'b (n t) -> b n t', t = 3)
+            mask = self.generate_mask_keypoints(kps)
+
+            if not self.confidence:
+                out = self.conf_remover(kps, mask)
+
+            out =self.position_emb(out)
+
+            out[mask == False] = 0
+
+
+            return out, mask 
 
     
     def conf_remover(self, src):
-        return src[:,:,:2]
+        if self.scene_disp:
+            return src[:,:,:,:2]
+        else:
+            return src[:,:,:2]
     
     def generate_mask_keypoints(self,kps):
-        #print(kps)
         if len(kps.size())==3:
             mask = torch.tensor( kps[:,:,2]>0)
         else:
@@ -177,27 +183,23 @@ class EncoderLayer(nn.Module):
         return self.ln2(ffn_out + ln1_out)
     
 class Encoder(nn.Module):
-    def __init__(self, n_words,n_token = 2, embed_dim=512, n_layers=3, num_heads = 1,kind = "add"):
+    def __init__(self, n_words,n_token = 2, embed_dim=512, n_layers=3, num_heads = 1,kind = "add",
+                 confidence = True, scene_disp = False):
         super().__init__()
-        self.input_enc = InputEmbedding(n_words, embed_dim, n_token, kind = kind)
+        self.input_enc = InputEmbedding(n_words, embed_dim, n_token, kind = kind, 
+                                        confidence = confidence, scene_disp = scene_disp)
         self.layers = nn.ModuleList([EncoderLayer(embed_dim =embed_dim, d_k =int(embed_dim/num_heads),
                                                   d_v =int(embed_dim/num_heads) , num_heads = num_heads) for _ in range(n_layers)])
     def forward(self, x, surround = None,mask = None):
         
         out, mask = self.input_enc(x, surround = surround)
-        mask = None
-        #print("FINAL MASK", mask)
 
         for i, layer in enumerate(self.layers):
             if i> 0:
-                #mask = None
                 pass
 
-            #print("encoder number : ", i)
-            #print("MASK is :", mask)
             if mask is not None:
                 pass
-                #print(mask.size())
             out = layer(out, mask )
         return out
 
@@ -226,16 +228,17 @@ class DecoderLayer(nn.Module):
         return self.ln3(ffn_out + ln2_out)
     
 class Decoder(nn.Module):
-    def __init__(self, n_words,n_token = 2, embed_dim=512, n_layers=3, num_heads = 1, kind = "add"):
+    def __init__(self, n_words,n_token = 2, embed_dim=512, n_layers=3, num_heads = 1, kind = "add", 
+                 confidence = True, scene_disp = False):
         super().__init__()
-        self.input_enc = InputEmbedding(n_words, embed_dim, n_token, kind = kind)
+        self.input_enc = InputEmbedding(n_words, embed_dim, n_token, kind = kind, 
+                                        confidence = confidence, scene_disp = scene_disp)
         self.layers = nn.ModuleList([DecoderLayer(embed_dim =embed_dim, d_k =int(embed_dim/num_heads),
                                                   d_v =int(embed_dim/num_heads) , num_heads = num_heads)for _ in range(n_layers)])
     def forward(self, x,encoder_output, surround = None, mask = None):
         
         out, mask = self.input_enc(x, surround = surround)
-        #print(mask)
-        #mask = self.decoder_mask(mask)
+        self.mask = mask
         for i, layer in enumerate(self.layers):
             #print("decoder number :", i)
             if i>0:
@@ -247,6 +250,9 @@ class Decoder(nn.Module):
 
             out = layer(out, encoder_output,  mask)
         return out
+    
+    def get_mask(self):
+        return self.mask
     
     def decoder_mask(self, mask):
         n = len(mask)
@@ -261,11 +267,16 @@ class Decoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, n_base_words, n_target_words, n_token,  n_layers = 3, kind = "add",embed_dim=512, num_heads = 1):
+    def __init__(self, n_base_words, n_target_words, n_token,  n_layers = 3, kind = "add",embed_dim=512, 
+                 num_heads = 1, confidence = True, scene_disp = False):
         super().__init__()
-        self.encoder = Encoder(n_base_words, n_token, embed_dim=embed_dim, kind = kind, num_heads = num_heads, n_layers = n_layers)
-        self.decoder = Decoder(n_target_words, n_token, embed_dim=embed_dim, kind = kind, num_heads= num_heads, n_layers = n_layers)
+        self.encoder = Encoder(n_base_words, n_token, embed_dim=embed_dim, kind = kind, num_heads = num_heads, 
+                               n_layers = n_layers, confidence = confidence, scene_disp = scene_disp)
+        self.decoder = Decoder(n_target_words, n_token, embed_dim=embed_dim, kind = kind, num_heads= num_heads, 
+                               n_layers = n_layers, confidence = confidence, scene_disp = scene_disp)
         self.linear = nn.Linear(embed_dim, n_target_words)
+        
+        self.scene_disp = scene_disp
     def forward(self,
                 encoder_input,
                 decoder_input,
@@ -275,7 +286,10 @@ class Transformer(nn.Module):
         
         encoder_out = self.encoder(encoder_input, surround = surround, mask = encoder_mask)
         decoder_out = self.decoder(decoder_input, encoder_out, surround = surround, mask = decoder_mask)
-        return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
+        mask = self.decoder.get_mask()
+        if self.scene_disp:            
+            return rearrange(self.linear(decoder_out), 'b n t -> (b n) t')
+        else:
+            return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
 
-        #return rearrange(torch.softmax(self.linear(decoder_out), dim=0), 'b n t -> b (n t)')
-        
+    

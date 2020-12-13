@@ -13,7 +13,7 @@ eval_mode='--save --verbose'
 
 stereo='0'
 
-epochs='400'
+epochs='800'
 
 hidden_size='1024' 
 

@@ -29,15 +29,18 @@ class GenerateKitti:
     METHODS = ['monoloco_pp']
 
 
-    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, model_mono = None, confidence = False, transformer = False, surround = False):
+    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, 
+                model_mono = None, confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False):
 
         # Load monoloco
         use_cuda = torch.cuda.is_available()
         device = torch.device("cuda" if use_cuda else "cpu")
 
+        self.scene_disp = scene_disp
         if 'monstereo' in self.METHODS:
             self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, p_dropout=p_dropout,
-                                  linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer, surround = surround)
+                                linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer,
+                                surround = surround, lstm = lstm, scene_disp = scene_disp)
         
 
         if 'monoloco_pp' in self.METHODS:
@@ -51,7 +54,8 @@ class GenerateKitti:
             else:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
-                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, transformer = transformer, surround= surround)
+                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, 
+                                    transformer = transformer, surround= surround, lstm = lstm, scene_disp = scene_disp)
 
         if 'monoloco' in self.METHODS:
             model_mono = 'data/models/monoloco-190717-0952.pkl'  # KITTI
@@ -259,7 +263,7 @@ def save_txts(path_txt, all_inputs, all_outputs, all_params, mode='monoloco', ca
             # Set the scale to obtain (approximately) same recall at evaluation¨
             #!bookmark
             n = 3
-            n =1.7
+            #n =1.7
             if mode == 'monstereo':
                 conf_scale = n*0.03
                 if vehicles:

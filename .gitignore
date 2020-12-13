@@ -22,3 +22,4 @@ export/
 .ipynb_checkpoints/
 archive/
 .vscode/
+jupyter_notebooks/

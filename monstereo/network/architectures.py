@@ -5,74 +5,9 @@ import torch.nn.functional as F
 import math
 from .transformer import TransformerModel
 from .transformer_2 import Transformer as TransformerModel_2
+from .transformer_3 import Transformer as TransformerModel_3
+from einops import rearrange, repeat
 
-
-class SimpleModel_old(nn.Module):
-
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda'):
-        super(SimpleModel_old, self).__init__()
-
-        self.num_stage = num_stage
-        self.stereo_size = input_size
-        self.mono_size = int(input_size / 2)
-        self.output_size = output_size - 1
-        self.linear_size = linear_size
-        self.p_dropout = p_dropout
-        self.num_stage = num_stage
-        self.linear_stages = []
-        self.device = device
-
-        # Initialize weights
-
-        # Preprocessing
-        self.w1 = nn.Linear(self.stereo_size, self.linear_size)
-        self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
-
-        # Internal loop
-        for _ in range(num_stage):
-            self.linear_stages.append(MyLinearSimple(self.linear_size, self.p_dropout))
-        self.linear_stages = nn.ModuleList(self.linear_stages)
-
-        # Post processing
-        self.w2 = nn.Linear(self.linear_size, self.linear_size)
-        self.w3 = nn.Linear(self.linear_size, self.linear_size)
-        self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
-
-        # ------------------------Other----------------------------------------------
-        # Auxiliary
-        self.w_aux = nn.Linear(self.linear_size, 1)
-
-        # Final
-        self.w_fin = nn.Linear(self.linear_size, self.output_size)
-
-        # NO-weight operations
-        self.relu = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(self.p_dropout)
-
-    def forward(self, x):
-
-        y = self.w1(x)
-        y = self.batch_norm1(y)
-        y = self.relu(y)
-        y = self.dropout(y)
-
-        for i in range(self.num_stage):
-            y = self.linear_stages[i](y)
-
-        # Auxiliary task
-        y = self.w2(y)
-        aux = self.w_aux(y)
-
-        # Final layers
-        y = self.w3(y)
-        y = self.batch_norm3(y)
-        y = self.relu(y)
-        y = self.dropout(y)
-        y = self.w_fin(y)
-
-        # Cat with auxiliary task
-        y = torch.cat((y, aux), dim=1)
-        return y
 
 
 class MyLinearSimple(nn.Module):
@@ -108,7 +43,8 @@ class MyLinearSimple(nn.Module):
 
 class SimpleModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False, surround = False):
+    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False, 
+                surround = False, lstm = False, scene_disp = False):
         super(SimpleModel, self).__init__()
 
         self.num_stage = num_stage
@@ -122,29 +58,69 @@ class SimpleModel(nn.Module):
         self.device = device
         self.transformer = transformer
         self.surround = surround
+        self.lstm = lstm
+        self.scene_disp = scene_disp
 
+        assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time"
         # Initialize weights
 
+        n_token = 3
+        n_hidden = 3
+        mul_output = 3
         # Preprocessing
         if self.transformer:
             assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
             # The max 
-            ntoken = 3
-            if self.surround:
-                ntoken+=10
-            kind = "cat"
-            if kind == 'cat':
-                ninp = ntoken + 2
+            #ntoken = 3
+            if not self.scene_disp:
+                if self.surround:
+                    n_token+=10
+                kind = "cat"
+                if kind == 'cat':
+                    n_inp = n_token + 2
+                else:
+                    n_inp = n_token
+
+                print(n_token, n_inp, kind)
+                self.transformer_model = TransformerModel(ntoken = n_token, ninp = n_inp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = p_dropout, kind = kind)
+                self.transformer_model2=  TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, 
+                                                            embed_dim = n_inp, num_heads = 3, n_layers = n_hidden) 
+
+
+                self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
             else:
-                ninp = ntoken
+
+                n_token = int(self.stereo_size/3*2)
+                n_token = self.stereo_size
+
+                kind = "cat"
+                if kind == 'cat':
+                    n_inp = n_token + 2
+                else:
+                    n_inp = n_token
+                assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
+
+                self.transformer_model3 = TransformerModel_3(n_base_words = 40, n_target_words = n_token*mul_output, n_token = n_token, kind = "cat", embed_dim = n_inp
+                                                            , num_heads = 3, n_layers = n_hidden,confidence = True, scene_disp = True)
+
+                self.w1 = nn.Linear(n_token*mul_output, self.linear_size) 
+
+
+        elif self.lstm:
             
-            print(ntoken, ninp, kind)
-            self.transformer = TransformerModel(ntoken = ntoken, ninp = ninp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = 0.2, kind = kind)
-           
-            self.transformer_2=  TransformerModel_2(n_base_words = ntoken, n_target_words = ntoken, n_token = ntoken, kind = kind, embed_dim = ninp, num_heads = 2, n_layers = 4) 
-            self.w1 = nn.Linear(int(self.stereo_size/3*ntoken), self.linear_size)
+            #ntoken = 3
+            bidirectional = True            
+            self.inputEmbedding = InputLSTM(dim_embed = 3,conf = True, mask = True )
+            self.LSTM = torch.nn.LSTM(input_size = n_token, hidden_size = int(n_token*mul_output), num_layers = n_hidden, 
+                                bidirectional = bidirectional, dropout = p_dropout)
+            if bidirectional:
+                mul_output*=2
+            self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
+
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
+
+
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
         self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
@@ -174,12 +150,41 @@ class SimpleModel(nn.Module):
         mask = self.transformer.generate_square_subsequent_mask(sz)
         return mask
 
+    def get_output(self, input, output):
+        mask = torch.sum(input, dim = 2)==0
+        #output = rearrange(output, 'b n k -> (b n) k')
+        mask = rearrange(mask, 'b n -> (b n)')
+        output[mask] = 0
+        return output
+
+        
     def forward(self, x, env= None):
 
-        if self.transformer:
-            #y = self.transformer(x, env)
-            y = self.transformer_2(x,x, env)
+        if self.transformer or self.lstm:
+            if self.transformer:
+                #y = self.transformer(x, env)
+                if self.scene_disp:
+                    y = self.transformer_model3(x,x, env)
+                    #y = rearrange(y, 'b n d -> (b n) d')
+                else:
+                    y = self.transformer_model2(x,x, env)
+            else:
+                y, _ = self.LSTM(self.inputEmbedding(x))
+                y = rearrange(y, 'n b d -> b (n d)')
+
             y = self.w1(y)
+            
+            
+            y = self.batch_norm1(y)
+            y = self.relu(y)
+            y = self.dropout(y)
+
+            aux = self.w_aux(y)
+            y = self.w_fin(y)
+            
+            y = torch.cat((y, aux), dim=1)
+            
+            return y
         else:
             y = self.w1(x)
 
@@ -537,3 +542,44 @@ class MyLinear(nn.Module):
         out = x + y
 
         return out
+
+class InputLSTM(nn.Module):
+
+
+
+    def __init__(self, dim_embed = 3, conf = False, mask = False):
+        super().__init__()
+        self.dim_embed = dim_embed
+        self.conf = conf
+        self.mask = mask
+        
+        
+    def forward(self, x, surround = None):
+
+        assert x.size(1)%self.dim_embed==0, "Wrong input, we need the flattened keypoints with the confidence"
+        
+        out = rearrange(x, 'b (n t) -> b n t', t = self.dim_embed)
+        mask = self.generate_mask_keypoints(out)
+        
+        
+        if self.mask:
+            mask = self.generate_mask_keypoints(out)
+            out[mask == False] = 0
+        
+        if not self.conf : 
+            out = self.conf_remover(out)
+        
+        out = rearrange(out, 'b n t -> n b t')
+        return out
+
+    
+    def conf_remover(self, kps):
+        return kps[:,:,:2]
+    
+    def generate_mask_keypoints(self,kps):
+        #print(kps)
+        if len(kps.size())==3:
+            mask = torch.tensor( kps[:,:,2]>0)
+        else:
+            mask = torch.tensor( kps[:,2]>0)
+        return mask
