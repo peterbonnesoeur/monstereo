@@ -20,10 +20,10 @@
 export dropout='0.3'
 dropout='0.3'
 
-args='--confidence --transformer --scene_disp'
+args='--confidence --transformer'
 
 export process_mode='NULL_ISNT_IT'
-    source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    #source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
 
     #source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations "${args}"
     #source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations "${args}"
@@ -31,6 +31,7 @@ export process_mode='NULL_ISNT_IT'
 
 export process_mode='mean'
     source ./train_eval.sh 0 data/kitti-pifpaf/annotations ${dropout} kitti data/kitti-pifpaf/annotations "${args}"
+    #source ./train_eval.sh 1 data/kitti-pifpaf/annotations_car ${dropout} kitti data/kitti-pifpaf/annotations_car "${args}"
 
     #source ./train_eval.sh 1 data/apollo-pifpaf/annotations_loose ${dropout} apolloscape data/apollo-pifpaf/annotations "${args}"
     #source ./train_eval.sh 1 data/apollo-pifpaf/annotations ${dropout} apolloscape data/apollo-pifpaf/annotations "${args}"

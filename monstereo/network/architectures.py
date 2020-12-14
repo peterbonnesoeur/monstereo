@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import math
 from .transformer import TransformerModel
 from .transformer_2 import Transformer as TransformerModel_2
-from .transformer_3 import Transformer as TransformerModel_3
+from .transformer_scene import Transformer as TransformerModel_scene
 from einops import rearrange, repeat
 
 
@@ -64,6 +64,7 @@ class SimpleModel(nn.Module):
         assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time"
         # Initialize weights
 
+        n_head = 3
         n_token = 3
         n_hidden = 3
         mul_output = 3
@@ -83,9 +84,10 @@ class SimpleModel(nn.Module):
 
                 print(n_token, n_inp, kind)
                 self.transformer_model = TransformerModel(ntoken = n_token, ninp = n_inp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = p_dropout, kind = kind)
-                self.transformer_model2=  TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, 
-                                                            embed_dim = n_inp, num_heads = 3, n_layers = n_hidden) 
-
+                self.transformer_kps=  TransformerModel_scene(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
+                                                            , num_heads = n_head, n_layers = n_hidden,confidence = True, scene_disp = False)
+                
+                #TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp, num_heads = n_head, n_layers = n_hidden) 
 
                 self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
             else:
@@ -100,7 +102,7 @@ class SimpleModel(nn.Module):
                     n_inp = n_token
                 assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
 
-                self.transformer_model3 = TransformerModel_3(n_base_words = 40, n_target_words = n_token*mul_output, n_token = n_token, kind = "cat", embed_dim = n_inp
+                self.transformer_scene = TransformerModel_scene(n_base_words = 12, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
                                                             , num_heads = 3, n_layers = n_hidden,confidence = True, scene_disp = True)
 
                 self.w1 = nn.Linear(n_token*mul_output, self.linear_size) 
@@ -164,10 +166,9 @@ class SimpleModel(nn.Module):
             if self.transformer:
                 #y = self.transformer(x, env)
                 if self.scene_disp:
-                    y = self.transformer_model3(x,x, env)
-                    #y = rearrange(y, 'b n d -> (b n) d')
+                    y = self.transformer_scene(x,x, env)
                 else:
-                    y = self.transformer_model2(x,x, env)
+                    y = self.transformer_kps(x,x, env)
             else:
                 y, _ = self.LSTM(self.inputEmbedding(x))
                 y = rearrange(y, 'n b d -> b (n d)')

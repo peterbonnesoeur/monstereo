@@ -358,7 +358,7 @@ class Trainer:
         with torch.no_grad():
             divider = 1
             if self.scene_disp:
-                divider = 10
+                divider = 0.5
             for end in range(int(self.VAL_BS/divider), size_eval + int(self.VAL_BS/divider), int(self.VAL_BS/divider)):
                 end = end if end < size_eval else size_eval
                     
@@ -388,7 +388,7 @@ class Trainer:
                     outputs = self.model(inputs)
                 
                 #print("DIMENSIONNALITY: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
-                self.compute_stats(outputs, labels, dic_err['val'], int(size_eval), clst='all')
+                self.compute_stats(outputs, labels, dic_err['val'], int(size_eval)*np.mean(dim), clst='all')
 
             print("DIMENSIONNALITY END: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
             self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all')

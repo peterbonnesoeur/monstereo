@@ -17,16 +17,16 @@ epochs='200'
 
 hidden_size='1024' 
 
-joints_there='0'
+joints_there='1'
 
 dropout="$3"
 
 joints_stereo='data/arrays/joints-kitti-stereo-201021-1518.json'
-joints_mono='data/arrays/joints-kitti-201023-1410.json' 
+joints_mono='data/arrays/joints-kitti-transformer-201214-154938.json' 
 dir_ann="$2"
 
 joints_stereo_car='data/arrays/joints-kitti-vehicles-stereo-201022-1536.json'
-joints_mono_car='data/arrays/joints-kitti-vehicles-201028-1054.json' 
+joints_mono_car='data/arrays/joints-kitti-vehicles-transformer-201214-151907.json' 
 
 dir_ann_car="$2"
 

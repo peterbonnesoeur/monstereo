@@ -128,7 +128,7 @@ class KeypointsDataset(Dataset):
  
     def scene_disposition_dataset(self):
         
-        threshold = 40
+        threshold = 12
         
         
         print(len(np.unique(self.names_all)), len(self.names_all))
