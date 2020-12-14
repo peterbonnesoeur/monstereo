@@ -249,9 +249,10 @@ class Trainer:
         best_training_acc = 1e6
         best_epoch = 0
         epoch_losses = defaultdict(lambda: defaultdict(list))
+
+        dim = defaultdict(list)
         for epoch in range(self.num_epochs):
             running_loss = defaultdict(lambda: defaultdict(int))
-
 
             # Each epoch has a training and validation phase
             for phase in ['train', 'val']:
@@ -263,7 +264,10 @@ class Trainer:
                 for inputs, labels, _, _, envs in self.dataloaders[phase]:
                     inputs = inputs.to(self.device)
                     if self.scene_disp:
+                        real_values = (torch.sum(labels, dim =2)!=0).float()
+                        dim[phase].append(torch.mean(torch.sum(real_values, dim =1)))
                         labels = rearrange(labels, 'b n d -> (b n) d')
+
                     labels = labels.to(self.device)
                     if self.surround:
                         envs = envs.to(self.device)
@@ -298,7 +302,7 @@ class Trainer:
                     #print("Labels",labels)
                     #print("Outputs", outputs)
                     #raise ValueError
-            self.cout_values(epoch, epoch_losses, running_loss)
+            self.cout_values(epoch, epoch_losses, running_loss, dim)
 
             # deep copy the model
             if epoch_losses['val'][self.val_task][-1] < best_acc:
@@ -346,9 +350,16 @@ class Trainer:
         dic_err['val']['sigmas'] = [0.] * len(self.tasks)
         dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d, transformer =self.transformer, surround = self.surround, scene_disp = self.scene_disp)
         size_eval = len(dataset)
+        if self.scene_disp:
+            dim = []
+        else:
+            dim = [1]
         start = 0
         with torch.no_grad():
-            for end in range(self.VAL_BS, size_eval + self.VAL_BS, self.VAL_BS):
+            divider = 1
+            if self.scene_disp:
+                divider = 10
+            for end in range(int(self.VAL_BS/divider), size_eval + int(self.VAL_BS/divider), int(self.VAL_BS/divider)):
                 end = end if end < size_eval else size_eval
                     
                 inputs, labels, _, _ , envs= dataset[start:end]
@@ -356,6 +367,8 @@ class Trainer:
                 inputs = inputs.to(self.device)
 
                 if self.scene_disp:
+                    real_values = (torch.sum(labels, dim =2)!=0).float()
+                    dim.append(torch.mean(torch.sum(real_values, dim =1)))
                     labels = rearrange(labels, 'b n d -> (b n) d')
                     
                 labels = labels.to(self.device)
@@ -373,9 +386,12 @@ class Trainer:
                     outputs = self.model(inputs, envs)
                 else:
                     outputs = self.model(inputs)
-                self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst='all')
+                
+                #print("DIMENSIONNALITY: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
+                self.compute_stats(outputs, labels, dic_err['val'], int(size_eval), clst='all')
 
-            self.cout_stats(dic_err['val'], size_eval, clst='all')
+            print("DIMENSIONNALITY END: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
+            self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all')
             # Evaluate performances on different clusters and save statistics
             if not self.scene_disp:
                 for clst in self.clusters:
@@ -457,7 +473,7 @@ class Trainer:
                 self.dic_angles[str(angle)].append(err)
             else:
                 self.dic_angles[str(-angle)].append(err)
-
+        print(rel_frac, size_eval, outputs.size(0))
         assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
@@ -591,14 +607,17 @@ class Trainer:
                             dic_err[clst]['threshold_strict_abs'][0]*100,  dic_err[clst]['threshold_strict_rel'][0]*100,  dic_err[clst]['threshold_strict_ang'][0],
                             dic_err[clst]['threshold_mean_abs'][0] * 100, dic_err[clst]['threshold_mean_rel'][0]*100, dic_err[clst]['threshold_mean_ang'][0] ))
 
-    def cout_values(self, epoch, epoch_losses, running_loss):
+    def cout_values(self, epoch, epoch_losses, running_loss, dim = None):
 
+        if dim is None:
+            dim['train'] = [1]
+            dim['val'] = [1]
         string = '\r' + '{:.0f} '
         format_list = [epoch]
         for phase in running_loss:
             string = string + phase[0:1].upper() + ':'
             for el in running_loss['train']:
-                loss = running_loss[phase][el] / self.dataset_sizes[phase]
+                loss = running_loss[phase][el] / (self.dataset_sizes[phase] * np.mean(dim[phase]))
                 epoch_losses[phase][el].append(loss)
                 if el == 'all':
                     string = string + ':{:.1f}  '
