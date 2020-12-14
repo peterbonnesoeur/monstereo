@@ -72,6 +72,7 @@ class MultiTaskLoss(torch.nn.Module):
         loss_values = [lam * l(o, g) for lam, l, o, g in zip(self.lambdas, self.losses, out, gt_out)]
         loss = sum(loss_values)
 
+        #print("HERE LOSS", loss, self.losses, loss_values, out, gt_out)
         if phase == 'val':
             loss_values_val = [l(o, g) for l, o, g in zip(self.losses_val, out, gt_out)]
             return loss, loss_values_val
@@ -82,7 +83,6 @@ class CompositeLoss(torch.nn.Module):
 
     def __init__(self, tasks, kps_3d = False):
         super(CompositeLoss, self).__init__()
-        print("HERE")
         self.tasks = tasks
         self.kps_3d = kps_3d
         if self.kps_3d:
@@ -136,8 +136,13 @@ class LaplacianLoss(torch.nn.Module):
         """
         eps = 0.01  # To avoid 0/0 when no uncertainty
         mu, si = mu_si[:, 0:1], mu_si[:, 1:2]
+        #print("MU SI ",mu,si)
+        #? Technique to allow the computation to happen even with xx == 0 
+        mask = (xx==0)
+        xx[mask]+=1e-24 
         norm = 1 - mu / xx  # Relative
         const = 2
+        #print("NORM", norm, xx)
 
         term_a = torch.abs(norm) * torch.exp(-si) + eps
         term_b = si

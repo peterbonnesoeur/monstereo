@@ -75,9 +75,12 @@ class EvalKitti:
                                 for method in self.methods}
 
         if not vehicles:
-            indexes = [self.methods.index('pseudo-lidar'), self.methods.index('monogrnet')]
-            for index in indexes:
-                self.methods.pop(index)
+            try:
+                indexes = [self.methods.index('pseudo-lidar'), self.methods.index('monogrnet')]
+                for index in indexes:
+                    self.methods.pop(index)
+            except:
+                pass
             print(self.methods)
             self.logger.info(self.methods)
         if 'monopsr' in self.methods:

@@ -190,34 +190,36 @@ class PreprocessKitti:
                         all_boxes, all_keypoints = [boxes], [keypoints]
                         all_keypoints_r = [keypoints_r]
                         
+                    
+
+                    # Horizontal Flipping for training
+                    if phase == 'train':
+                        # GT)
+                        boxes_gt_flip, ys_flip = flip_labels(boxes_gt, ys, im_w=width)
+                        # New left
+                        boxes_flip = flip_inputs(boxes_r, im_w=width, mode='box', vehicles = self.vehicles)
+                        keypoints_flip = flip_inputs(keypoints_r, im_w=width, vehicles = self.vehicles)
+
+                        # New right
+                        keypoints_r_flip = flip_inputs(keypoints, im_w=width, vehicles = self.vehicles)
+
+                        # combine the 2 modes
+                        all_boxes_gt = [boxes_gt, boxes_gt_flip]
+                        all_ys = [ys, ys_flip]
+                        all_boxes = [boxes, boxes_flip]
+                        all_keypoints = [keypoints, keypoints_flip]
+                        all_keypoints_r = [keypoints_r, keypoints_r_flip]
+
                     else:
-
-                        # Horizontal Flipping for training
-                        if phase == 'train':
-                            # GT)
-                            boxes_gt_flip, ys_flip = flip_labels(boxes_gt, ys, im_w=width)
-                            # New left
-                            boxes_flip = flip_inputs(boxes_r, im_w=width, mode='box', vehicles = self.vehicles)
-                            keypoints_flip = flip_inputs(keypoints_r, im_w=width, vehicles = self.vehicles)
-
-                            # New right
-                            keypoints_r_flip = flip_inputs(keypoints, im_w=width, vehicles = self.vehicles)
-
-                            # combine the 2 modes
-                            all_boxes_gt = [boxes_gt, boxes_gt_flip]
-                            all_ys = [ys, ys_flip]
-                            all_boxes = [boxes, boxes_flip]
-                            all_keypoints = [keypoints, keypoints_flip]
-                            all_keypoints_r = [keypoints_r, keypoints_r_flip]
-
-                        else:
-                            all_boxes_gt, all_ys = [boxes_gt], [ys]
-                            all_boxes, all_keypoints = [boxes], [keypoints]
-                            all_keypoints_r = [keypoints_r]
+                        all_boxes_gt, all_ys = [boxes_gt], [ys]
+                        all_boxes, all_keypoints = [boxes], [keypoints]
+                        all_keypoints_r = [keypoints_r]
 
                     # Match each set of keypoint with a ground truth
                     self.dic_jo[phase]['K'].append(kk)
+                    #print(len(all_boxes_gt))
                     for ii, boxes_gt in enumerate(all_boxes_gt):
+                        #print("vuala",phase, ii)
                         keypoints, keypoints_r = torch.tensor(all_keypoints[ii]), torch.tensor(all_keypoints_r[ii])
                         ys = all_ys[ii]
                         matches = get_iou_matches(all_boxes[ii], boxes_gt, self.iou_min)
@@ -245,7 +247,17 @@ class PreprocessKitti:
                                         self.dic_jo[phase]['env'].append(surround.tolist())
                                     self.dic_jo[phase]['X'].append(inp)
                                     self.dic_jo[phase]['Y'].append(lab)
-                                    self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
+                                    
+                                    if dropout!=0:
+                                        mark = "_drop_0"+str(dropout).split(".")[-1]
+                                    else:
+                                        mark =''
+
+                                    if ii>=1:
+                                        self.dic_jo[phase]['names'].append(name.split(".")[0]+"_bis"+mark+".txt")  # One image name for each annotation
+                                    else:
+                                        self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")
+                                    #self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
                                     if self.surround:
                                         append_cluster_transformer(self.dic_jo, phase, inp, lab, keypoint.tolist(), surround.tolist())
                                     else:
