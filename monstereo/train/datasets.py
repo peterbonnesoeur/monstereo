@@ -4,6 +4,7 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
+from einops import rearrange, repeat
 
 
 class ActivityDataset(Dataset):
@@ -129,13 +130,13 @@ class KeypointsDataset(Dataset):
     def scene_disposition_dataset(self):
         
         threshold = 12
-        
+        EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
+
         
         print(len(np.unique(self.names_all)), len(self.names_all))
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
         output_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.outputs_all.size(-1))
-
         output_v2 = torch.zeros(self.outputs_all.size())
         
         kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
@@ -153,12 +154,15 @@ class KeypointsDataset(Dataset):
             #    inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
             #    outputs_new[name_index,instance_index,: ] = self.outputs_all[index]
             #    kps_new[name_index,instance_index,: ] = self.kps_all[index]
-               
+            if i == 0:
+                old_name = self.names_all[index]
         
             if instance_index >= threshold and old_name == self.names_all[index]:
-                print("Too many cars in the images", self.names_all[index])
+                print("Too many instances in the images", self.names_all[index])
                 pass
             elif old_name != self.names_all[index]:
+                #if instance_index<threshold:
+                #    inputs_new[name_index,instance_index,: ] = EOS
                 instance_index = 0
                 if old_name is not None:
                     name_index+=1
@@ -185,8 +189,9 @@ class KeypointsDataset(Dataset):
                 
                 instance_index+=1
                 
-        
-        
+        #if instance_index<threshold: 
+        #   inputs_new[name_index,instance_index,: ] = EOS
+        #
         self.outputs_all = output_new
         self.inputs_all = inputs_new
         self.kps_all = kps_new

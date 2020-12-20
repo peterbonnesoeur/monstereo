@@ -191,7 +191,7 @@ class PreprocessKitti:
                         all_keypoints_r = [keypoints_r]
                         
                     
-
+                
                     # Horizontal Flipping for training
                     if phase == 'train':
                         # GT)
@@ -215,6 +215,8 @@ class PreprocessKitti:
                         all_boxes, all_keypoints = [boxes], [keypoints]
                         all_keypoints_r = [keypoints_r]
 
+                    if phase == 'val' and dropout > 0.0:
+                        continue
                     # Match each set of keypoint with a ground truth
                     self.dic_jo[phase]['K'].append(kk)
                     #print(len(all_boxes_gt))

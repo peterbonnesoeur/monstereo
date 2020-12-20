@@ -139,7 +139,7 @@ class LaplacianLoss(torch.nn.Module):
         #print("MU SI ",mu,si)
         #? Technique to allow the computation to happen even with xx == 0 
         mask = (xx==0)
-        xx[mask]+=1e-24 
+        xx[mask]+=1e-24
         norm = 1 - mu / xx  # Relative
         const = 2
         #print("NORM", norm, xx)
