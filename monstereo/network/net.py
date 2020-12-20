@@ -10,6 +10,7 @@ import logging
 from collections import defaultdict
 
 import torch
+from einops import rearrange, repeat
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
@@ -131,12 +132,15 @@ class Loco:
 
             elif self.net == 'monoloco_pp':
                 inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
+                #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = inputs.size(-1) ).to(inputs.device)
+
                 if self.surround:
                     envs = dist_angle_array(inputs)
                     outputs = self.model(inputs, envs)
                 else:
-                    if len(inputs.size())<3:
+                    if len(inputs.size())<3 and self.scene_disp:
                         inputs = inputs.unsqueeze(0)
+                        #EOS
                     #print("INPUTS SIZE", inputs.size(), len(inputs.size()))
 
                     outputs = self.model(inputs)

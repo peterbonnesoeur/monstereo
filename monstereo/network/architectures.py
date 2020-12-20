@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from .transformer import TransformerModel
-from .transformer_2 import Transformer as TransformerModel_2
 from .transformer_scene import Transformer as TransformerModel_scene
+from .transformer_scene2 import Transformer as TransformerModel_scene2
 from einops import rearrange, repeat
 
 
@@ -40,14 +40,44 @@ class MyLinearSimple(nn.Module):
 
         return out
 
+class Refiner(nn.Module):
+    def __init__(self, input_size, length_sentence =12, p_dropout=0.2, num_stage=4, num_heads = 3,device='cuda'):
+        super(Refiner, self).__init__()
 
+        self.input_size = input_size
+        self.length_sentence = length_sentence
+        self.p_dropout = p_dropout
+
+    
+        n_output_token = self.input_size
+        kind ='cat'
+        if kind == 'cat':
+            n_output = n_output_token + 2
+        else:
+            n_output = n_output_token
+        mul_output = 1
+        
+        self.transformer_scene=  TransformerModel_scene2(n_base_words = length_sentence, n_target_words = n_output_token*mul_output, n_token = n_output_token, kind = kind, embed_dim = n_output
+                                                        , num_heads = num_heads, n_layers = num_stage, confidence = True, scene_disp = True)
+
+        #self.w_out = nn.Linear(int(n_output_token*mul_output), self.input_size)
+
+    def forward(self, y,batch_size):
+        
+        #print("HERE",batch_size)
+        env = None
+        output = rearrange(y, '(b n) d -> b n d', b = batch_size)
+        output = self.transformer_scene(output,output,env)
+        #output = self.w_out(output)
+
+        return output
+        
 class SimpleModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False, 
+    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=4, device='cuda', transformer = False, 
                 surround = False, lstm = False, scene_disp = False):
         super(SimpleModel, self).__init__()
 
-        self.num_stage = num_stage
         self.stereo_size = input_size
         self.mono_size = int(input_size / 2)
         self.output_size = output_size - 1
@@ -60,13 +90,15 @@ class SimpleModel(nn.Module):
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
+        self.scene_refine = False
+        self.refiner_flag = True
 
         assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time"
         # Initialize weights
 
         n_head = 3
         n_token = 3
-        n_hidden = 3
+        n_hidden = self.num_stage
         mul_output = 3
         # Preprocessing
         if self.transformer:
@@ -84,14 +116,29 @@ class SimpleModel(nn.Module):
 
                 print(n_token, n_inp, kind)
                 self.transformer_model = TransformerModel(ntoken = n_token, ninp = n_inp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = p_dropout, kind = kind)
-                self.transformer_kps=  TransformerModel_scene(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
+                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
                                                             , num_heads = n_head, n_layers = n_hidden,confidence = True, scene_disp = False)
                 
-                #TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp, num_heads = n_head, n_layers = n_hidden) 
+                #self.transformer_model= TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp, num_heads = n_head, n_layers = n_hidden) 
 
                 self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
-            else:
 
+            elif self.scene_disp and self.scene_refine:
+
+               
+                kind = "cat"
+                if kind == 'cat':
+                    n_inp = n_token + 2
+                else:
+                    n_inp = n_token
+
+                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
+                                        , num_heads = n_head, n_layers = n_hidden,confidence = True, scene_disp = False)
+
+
+                self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size) 
+            else:
+                assert self.transformer, "Currently, the scene disposition method is only compatible with the transformer"
                 n_token = int(self.stereo_size/3*2)
                 n_token = self.stereo_size
 
@@ -102,18 +149,26 @@ class SimpleModel(nn.Module):
                     n_inp = n_token
                 assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
 
-                self.transformer_scene = TransformerModel_scene(n_base_words = 12, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
+                self.transformer_scene = TransformerModel_scene2(n_base_words = 12, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
                                                             , num_heads = 3, n_layers = n_hidden,confidence = True, scene_disp = True)
 
                 self.w1 = nn.Linear(n_token*mul_output, self.linear_size) 
 
-
         elif self.lstm:
             
-            #ntoken = 3
-            bidirectional = True            
+            ntoken = 3                
+            kind = "cat"
+            if kind == 'cat':
+                n_inp = n_token + 2
+            else:
+                n_inp = n_token
+            bidirectional = True
+            # This transformer is only instanciated to use the same exact input encoding for both the LSTM and the transformer
+            self.transformer_kps=  TransformerModel_scene(n_base_words = n_token, n_target_words = n_token, n_token = n_token, kind = kind, embed_dim = n_inp
+                                                            ,confidence = True, scene_disp = False)            
             self.inputEmbedding = InputLSTM(dim_embed = 3,conf = True, mask = True )
-            self.LSTM = torch.nn.LSTM(input_size = n_token, hidden_size = int(n_token*mul_output), num_layers = n_hidden, 
+            #self.inputEmbedding = self.transformer_kps.encoder.input_enc()
+            self.LSTM = torch.nn.LSTM(input_size = n_inp, hidden_size = int(n_token*mul_output), num_layers = n_hidden, 
                                 bidirectional = bidirectional, dropout = p_dropout)
             if bidirectional:
                 mul_output*=2
@@ -122,7 +177,7 @@ class SimpleModel(nn.Module):
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
 
-
+        self.n_token = n_token
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
         self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
@@ -144,6 +199,7 @@ class SimpleModel(nn.Module):
         # Final
         self.w_fin = nn.Linear(self.linear_size, self.output_size)
 
+        self.refiner = Refiner(input_size=self.output_size+1, length_sentence=12, p_dropout=self.p_dropout, num_stage=n_hidden, device=self.device)
         # NO-weight operations
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout(self.p_dropout)
@@ -165,26 +221,38 @@ class SimpleModel(nn.Module):
         if self.transformer or self.lstm:
             if self.transformer:
                 #y = self.transformer(x, env)
+
                 if self.scene_disp:
-                    y = self.transformer_scene(x,x, env)
+                    
+                    if self.scene_refine:
+                        inp = rearrange(x, 'b n d -> (b n) d')
+                        y = self.transformer_kps(inp,inp, env)
+                    else:
+                        y = self.transformer_scene(x,x, env)
                 else:
                     y = self.transformer_kps(x,x, env)
+                    #y = self.transformer_model(x,x,env)
             else:
-                y, _ = self.LSTM(self.inputEmbedding(x))
+                y,_ = self.transformer_kps.encoder.input_enc(x)
+                y = rearrange(y, 'b n t -> n b t')
+                y, _ = self.LSTM(y)
                 y = rearrange(y, 'n b d -> b (n d)')
 
             y = self.w1(y)
             
-            
+            aux = self.w_aux(y)
+
             y = self.batch_norm1(y)
             y = self.relu(y)
             y = self.dropout(y)
 
-            aux = self.w_aux(y)
             y = self.w_fin(y)
             
             y = torch.cat((y, aux), dim=1)
             
+            if self.scene_refine and self.refiner_flag:
+                y = self.refiner(y, x.size(0))
+
             return y
         else:
             y = self.w1(x)
