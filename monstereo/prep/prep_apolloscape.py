@@ -154,13 +154,18 @@ class PreprocessApolloscape:
                     print("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
                     print("-"*50)
 
-                    
-                self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
-                
-                self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
-                self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
+                if dropout == 0:
+                    #? For the manual evaluation, the extended dataset with the dropout is not considered.
+                    # We train on the extended dataset and evaluate on the original dataset
+                    self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
+                    self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
+                    self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
 
-                ys_list_final = []
+                    ys_list_final = []
+
+                if phase == 'val' and dropout > 0.0:
+                    #? If we are in the validation case, we should not use the dropout parameter.
+                    continue
 
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
@@ -181,7 +186,13 @@ class PreprocessApolloscape:
                     self.dic_jo[phase]['kps'].append(kps.tolist())
                     self.dic_jo[phase]['X'].append(list(inp))
                     self.dic_jo[phase]['Y'].append(ys)
-                    self.dic_jo[phase]['names'].append(scene_id+".jpg")  # One image name for each annotation
+
+                    #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation
+                    if dropout!=0:
+                        mark = "_drop_0"+str(dropout).split(".")[-1]
+                    else:
+                        mark =''
+                    self.dic_jo[phase]['names'].append(scene_id+mark+".jpg")  # One image name for each annotation
                     self.dic_jo[phase]['boxes_3d'].append(list(boxes_3d))
                     self.dic_jo[phase]['K'].append(intrinsic_vec_to_mat(kk).tolist())
                     

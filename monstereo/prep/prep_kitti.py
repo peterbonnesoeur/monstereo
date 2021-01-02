@@ -160,6 +160,8 @@ class PreprocessKitti:
                 annotations, kk, tt = factory_file(path_calib, self.dir_ann, basename)
 
                 if dropout == 0:
+                    #? For the manual evaluation, the extended dataset with the dropout is not considered.
+                    # We train on the extended dataset and evaluate on the original dataset
                     self.dic_names[basename + '.png']['boxes'] = copy.deepcopy(boxes_gt)
                     self.dic_names[basename + '.png']['ys'] = copy.deepcopy(ys)
                     self.dic_names[basename + '.png']['K'] = copy.deepcopy(kk)
@@ -176,15 +178,15 @@ class PreprocessKitti:
                 if keypoints:
                     
 
-                    #if not self.monocular:
-                    annotations_r, kk_r, tt_r = factory_file(path_calib, self.dir_ann, basename, mode='right')
-                    boxes_r, keypoints_r = preprocess_pifpaf(annotations_r, im_size=(width, height), min_conf=min_conf)
-                    cat = get_category(keypoints, os.path.join(self.dir_byc_l, basename + '.json'))
+                    if not self.monocular:
+                        annotations_r, kk_r, tt_r = factory_file(path_calib, self.dir_ann, basename, mode='right')
+                        boxes_r, keypoints_r = preprocess_pifpaf(annotations_r, im_size=(width, height), min_conf=min_conf)
+                        cat = get_category(keypoints, os.path.join(self.dir_byc_l, basename + '.json'))
                         
-                    # else:
-                    #    keypoints_r = None
+                    else:
+                        keypoints_r = None
                     
-                    if not keypoints_r:  # Case of no detection
+                    if not keypoints_r:  #? Case of no detection
                         all_boxes_gt, all_ys = [boxes_gt], [ys]
                         boxes_r, keypoints_r = boxes[0:1].copy(), keypoints[0:1].copy()
                         all_boxes, all_keypoints = [boxes], [keypoints]
@@ -216,19 +218,23 @@ class PreprocessKitti:
                         all_keypoints_r = [keypoints_r]
 
                     if phase == 'val' and dropout > 0.0:
+                        #? If we are in the validation case, we should not use the dropout parameter.
                         continue
                     # Match each set of keypoint with a ground truth
                     self.dic_jo[phase]['K'].append(kk)
                     #print(len(all_boxes_gt))
                     for ii, boxes_gt in enumerate(all_boxes_gt):
-                        #print("vuala",phase, ii)
+
                         keypoints, keypoints_r = torch.tensor(all_keypoints[ii]), torch.tensor(all_keypoints_r[ii])
                         ys = all_ys[ii]
                         matches = get_iou_matches(all_boxes[ii], boxes_gt, self.iou_min)
 
-                        keypoints_raw = preprocess_monoloco(keypoints, kk, confidence=self.confidence)
+                        #? Test to provide additionnal informations to the set of keypoints -> proved to not work well
+                        #TODO : additionnal testing necessary on the surround function or entire removal necessary
                         if self.surround:
+                            keypoints_raw = preprocess_monoloco(keypoints, kk, confidence=self.confidence)
                             surrounds = dist_angle_array(keypoints_raw)
+
                         for (idx, idx_gt) in matches:
                             keypoint = keypoints[idx:idx + 1]
                             lab = ys[idx_gt][:-1]
@@ -238,28 +244,29 @@ class PreprocessKitti:
                                 keypoint, length_keypoints, occ_kps = keypoints_dropout(keypoint, dropout)
                                 occluded_keypoints[phase].append(occ_kps)
                                 inp = preprocess_monoloco(keypoint, kk, confidence=self.confidence).view(-1).tolist()
-                                #print("INP", inp)
+
                                 if self.surround:
                                     surround = surrounds[idx]
-                                lab = normalize_hwl(lab)
+                                #lab = normalize_hwl(lab)
                                 if ys[idx_gt][10] < 0.5:
                                     self.dic_jo[phase]['kps'].append(keypoint.tolist())
                                     if self.surround:
-                                        #print(surround, inp)
                                         self.dic_jo[phase]['env'].append(surround.tolist())
                                     self.dic_jo[phase]['X'].append(inp)
                                     self.dic_jo[phase]['Y'].append(lab)
-                                    
+
+                                    #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation                                    
                                     if dropout!=0:
                                         mark = "_drop_0"+str(dropout).split(".")[-1]
                                     else:
                                         mark =''
 
                                     if ii>=1:
+                                        #Differenciate the flipped and regualr ouptuts
                                         self.dic_jo[phase]['names'].append(name.split(".")[0]+"_bis"+mark+".txt")  # One image name for each annotation
                                     else:
                                         self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")
-                                    #self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
+
                                     if self.surround:
                                         append_cluster_transformer(self.dic_jo, phase, inp, lab, keypoint.tolist(), surround.tolist())
                                     else:
@@ -483,6 +490,9 @@ def crop_and_draw(im, box, keypoint):
     return crop, h_crop, w_crop
 
 def dist_angle_array_old(keypoints_list, base_dim = 10):
+    #! for surround = True only
+    #? Function used to provide additionnal information sto the set of keypoints. This is done by computing the distance to each 
+    # set of keypoints and their angle between each sets.
     from einops import rearrange
 
     assert keypoints_list.size()[1]%3 == 0, "You need the confidence on this one"
@@ -491,9 +501,6 @@ def dist_angle_array_old(keypoints_list, base_dim = 10):
     keypoints_list = rearrange(keypoints_list, 'b (n d) -> b n d', d = 3)
 
     conf_masks = keypoints_list[:,:, -1]>0
-    #print(conf_masks.size(), keypoints_list.size()  ,keypoints_list[0][conf_masks[0]].size())
-    #print(keypoints_list[0], conf_masks[0], keypoints_list[0][conf_masks[0]])
-    
     #? Here, we compute the mean values of each sets of keypoints and we only use the keypoints with a confidence > 0
     means = [torch.mean(torch.Tensor(keypoints)[conf_mask], dim =0)[:2] for keypoints, conf_mask in zip(keypoints_list, conf_masks)]
 
@@ -505,11 +512,7 @@ def dist_angle_array_old(keypoints_list, base_dim = 10):
 
     v = torch.Tensor([1,0])
     for mean in means:
-        #print(means,mean)
-        #print(torch.norm(means-mean))
-        #print("here",torch.norm(means-mean, dim = 1),list(torch.sort(torch.norm(means-mean, dim = 1)))[1:])
         dist, arg =  torch.sort(torch.norm(means-mean, dim = 1))
-        #print(dist[1:], arg[1:])
         dists.append(dist[1:])
         args = arg[1:]
         
