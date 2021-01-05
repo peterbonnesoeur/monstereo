@@ -160,7 +160,6 @@ class PreprocessApolloscape:
                     self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
-
                     ys_list_final = []
 
                 if phase == 'val' and dropout > 0.0:
