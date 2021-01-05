@@ -3,12 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from .transformer import TransformerModel
-from .transformer_scene import Transformer as TransformerModel_scene
+#from .transformer import TransformerModel
+#from .transformer_scene import Transformer as TransformerModel_scene
 from .transformer_scene2 import Transformer as TransformerModel_scene2
 from einops import rearrange, repeat
 
+#from ..train import SCENE_INSTANCE_SIZE
 
+SCENE_INSTANCE_SIZE = 20
 
 class MyLinearSimple(nn.Module):
     def __init__(self, linear_size, p_dropout=0.5):
@@ -41,7 +43,7 @@ class MyLinearSimple(nn.Module):
         return out
 
 class Refiner(nn.Module):
-    def __init__(self, input_size, length_sentence =12, p_dropout=0.2, num_stage=4, num_heads = 3,device='cuda'):
+    def __init__(self, input_size, length_sentence =12, p_dropout=0.2, num_stage=3, num_heads = 3,device='cuda'):
         super(Refiner, self).__init__()
 
         self.input_size = input_size
@@ -53,29 +55,32 @@ class Refiner(nn.Module):
         kind ='cat'
         if kind == 'cat':
             n_output = n_output_token + 2
+        elif kind == 'num':
+            embed_dim = n_output_token +1
         else:
             n_output = n_output_token
         mul_output = 1
         
-        self.transformer_scene=  TransformerModel_scene2(n_base_words = length_sentence, n_target_words = n_output_token*mul_output, n_token = n_output_token, kind = kind, embed_dim = n_output
-                                                        , num_heads = num_heads, n_layers = num_stage, confidence = True, scene_disp = True)
+        self.transformer_scene=  TransformerModel_scene2(n_base_words = length_sentence, n_target_words = n_output_token*mul_output, kind = kind, embed_dim = n_output
+                                                        , num_heads = num_heads, n_layers = 1, confidence = True, scene_disp = True)
 
-        #self.w_out = nn.Linear(int(n_output_token*mul_output), self.input_size)
+        
+        self.w_out = nn.Linear(int(n_output_token*mul_output), self.input_size)
 
     def forward(self, y,batch_size):
         
         #print("HERE",batch_size)
         env = None
-        output = rearrange(y, '(b n) d -> b n d', b = batch_size)
-        output = self.transformer_scene(output,output,env)
+        #output = rearrange(y, '(b n) d -> b n d', b = batch_size)
+        #output = self.transformer_scene(output,output,env)
         #output = self.w_out(output)
-
+        output = self.w_out(y)
         return output
         
 class SimpleModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=4, device='cuda', transformer = False, 
-                surround = False, lstm = False, scene_disp = False):
+    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda', transformer = False, 
+                confidence = True, surround = False, lstm = False, scene_disp = False, scene_refine = False):
         super(SimpleModel, self).__init__()
 
         self.stereo_size = input_size
@@ -90,94 +95,165 @@ class SimpleModel(nn.Module):
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
-        self.scene_refine = False
+        self.scene_refine = scene_refine
+        self.confidence = confidence
         self.refiner_flag = True
 
         assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time"
         # Initialize weights
 
-        n_head = 3
-        n_token = 3
-        n_hidden = self.num_stage
-        mul_output = 3
+        n_hidden = self.num_stage #? Number of stages for the transformer (a stage for the transfromer is the number of layer for the encoder/decoder). Of course, more layers means more calculations
+        mul_output = 1  #? determine if at the end of the transformer we add a fully connected layer to go from N to mul_output*N outputs. If mul_output = 1, there will be no such fully connected layer
+        n_head = 4 #? the number of heads of of multi_headed attention model
+        n_inp = 3  #? the original input size for the keypoints (X,Y,C)
+        if not self.confidence:
+            n_inp = 2
+        kind = "cat" #? The kind of position embedding between [cat, add, num, none]
+        #? Cat adds a complex of a sin and cos after the data of the keypoints (hence, the inputs for the transformer grows from n_inp to n_inp + 2)
+        #? add adds a complex of a sin and a cos on top of the X and Y coordinate. We are doing X = X+cos(wt) and Y = Ysin(wt)
+        #? num adds a counter at the end of the data of the keypoints. It is a simple index going from [0, N-1] where N is the size of the sequence (hence, the inputs for the transformer grows from n_inp to n_inp + 1).  
+        
+        
+        if scene_disp:
+            reordering = True
+        else:
+            reordering = False
+
+        length_scene_sequence = SCENE_INSTANCE_SIZE #? in the case of the scene disposition (where we do not look at the keypoints but at the sequence of keypoints in our transformer),
+                                                    #? we needed to create a padded array of fixed size to put our instances. In this case, the instances in the sequence are the set of 
+                                                    #? 2d keypoints with their confidence and flattened. This constant is defined in the train/dataset part.
+
+        
         # Preprocessing
         if self.transformer:
-            assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
-            # The max 
-            #ntoken = 3
+            #assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
+
             if not self.scene_disp:
+
+                #! In the future, the surround parameter will be removed
                 if self.surround:
-                    n_token+=10
-                kind = "cat"
+                    n_inp+=10
+
+                #? Embed_dim is the embeding dimension that the transformer will efectively see. Hence, it is the dimension obtained after the embedding and position embedding step
                 if kind == 'cat':
-                    n_inp = n_token + 2
+                    embed_dim = n_inp + 2 #? For an explanation, see the comment on top for the variable "kind"
+                elif kind == 'num':
+                    embed_dim = n_inp +1 #? For an explanation, see the comment on top for the variable "kind"
                 else:
-                    n_inp = n_token
+                    embed_dim = n_inp
 
-                print(n_token, n_inp, kind)
-                self.transformer_model = TransformerModel(ntoken = n_token, ninp = n_inp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = p_dropout, kind = kind)
-                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
-                                                            , num_heads = n_head, n_layers = n_hidden,confidence = True, scene_disp = False)
-                
-                #self.transformer_model= TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp, num_heads = n_head, n_layers = n_hidden) 
+                d_attention = int(embed_dim/2) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
+                                               #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
 
-                self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
+                print( n_inp, embed_dim, kind)
+                #self.transformer_model = TransformerModel(ntoken = n_token, ninp = n_inp, nhead = 1,  nhid = 2, nlayers = 2,  dropout = p_dropout, kind = kind)
+                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output, kind = kind, embed_dim = embed_dim, 
+                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
+                                                                scene_disp = False, reordering = reordering)
+                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
+                                                                #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
+                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
+                                                                #  the instances depending on their height for example)
 
-            elif self.scene_disp and self.scene_refine:
+                #self.transformer_model= TransformerModel_2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp, num_heads = n_head, n_layers = n_hidden)
+                if self.confidence:
+                    self.w1 = nn.Linear(int(self.stereo_size/3*embed_dim*mul_output), self.linear_size)
+                else:
+                    self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), self.linear_size)
 
-               
-                kind = "cat"
+            elif self.scene_refine: 
+                #? This method is a bit peculiar since we are at first using our regular keypoint-based transformer to obtain some results. 
+                #? But right after that step, we are using a scene transformer reasonning on the outputs of the transformer.
+                #! The system obtained acts as a refining step for our model
+
+                #? Embed_dim is the embeding dimension that the transformer will efectively see. Hence, it is the dimension obtained after the embedding and position embedding step
                 if kind == 'cat':
-                    n_inp = n_token + 2
+                    embed_dim = n_inp + 2 #? For an explanation, see the comment on top for the variable "kind"
+                elif kind == 'num':
+                    embed_dim = n_inp +1 #? For an explanation, see the comment on top for the variable "kind"
+
+                d_attention = int(embed_dim/2) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
+                                               #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
+
+                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output, kind = kind, embed_dim = embed_dim, 
+                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden, confidence = self.confidence, 
+                                                                scene_disp = False, reordering = reordering)
+                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
+                                                                #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
+                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
+                                                                #  the instances depending on their height for example)
+
+                if self.confidence:
+                    self.w1 = nn.Linear(int(self.stereo_size/3*embed_dim*mul_output), self.linear_size)
                 else:
-                    n_inp = n_token
+                    self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), self.linear_size)
 
-                self.transformer_kps=  TransformerModel_scene2(n_base_words = n_token, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
-                                        , num_heads = n_head, n_layers = n_hidden,confidence = True, scene_disp = False)
+                #TODO for the refiner, remove the auxiliary term
+                self.refiner = Refiner(input_size=self.output_size+1, length_sentence=length_scene_sequence, p_dropout=self.p_dropout, num_stage=n_hidden, device=self.device)
 
-
-                self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size) 
             else:
                 assert self.transformer, "Currently, the scene disposition method is only compatible with the transformer"
-                n_token = int(self.stereo_size/3*2)
-                n_token = self.stereo_size
+                n_inp = self.stereo_size
 
-                kind = "cat"
+
                 if kind == 'cat':
-                    n_inp = n_token + 2
+                    embed_dim = n_inp + 2
+                elif kind == 'num':
+                    embed_dim = n_inp +1
                 else:
-                    n_inp = n_token
+                    embed_dim = n_inp
+
+                d_attention = int(embed_dim/2)
+
                 assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
 
-                self.transformer_scene = TransformerModel_scene2(n_base_words = 12, n_target_words = n_token*mul_output, n_token = n_token, kind = kind, embed_dim = n_inp
-                                                            , num_heads = 3, n_layers = n_hidden,confidence = True, scene_disp = True)
+                self.transformer_scene = TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output, kind = kind, embed_dim = embed_dim,
+                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
+                                                                scene_disp = True, reordering = reordering)
+                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
+                                                                #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
+                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
+                                                                #  the instances depending on their height for example)
 
-                self.w1 = nn.Linear(n_token*mul_output, self.linear_size) 
+                self.w1 = nn.Linear(embed_dim*mul_output, self.linear_size) 
 
         elif self.lstm:
+
+            #? To benchmark our algotrtihm, the LSTM is also implemented. This is a simple bi-directioonal LSTM working in both the scene and keypoint situation
             
-            ntoken = 3                
-            kind = "cat"
+            if self.scene_disp:
+                n_inp = self.stereo_size 
+                     
             if kind == 'cat':
-                n_inp = n_token + 2
+                embed_dim = n_inp + 2
+
+            elif kind == 'num':
+                embed_dim = n_inp +1
             else:
-                n_inp = n_token
+                embed_dim = n_inp
+
+            d_attention = int(embed_dim/2)
+
             bidirectional = True
-            # This transformer is only instanciated to use the same exact input encoding for both the LSTM and the transformer
-            self.transformer_kps=  TransformerModel_scene(n_base_words = n_token, n_target_words = n_token, n_token = n_token, kind = kind, embed_dim = n_inp
-                                                            ,confidence = True, scene_disp = False)            
-            self.inputEmbedding = InputLSTM(dim_embed = 3,conf = True, mask = True )
-            #self.inputEmbedding = self.transformer_kps.encoder.input_enc()
-            self.LSTM = torch.nn.LSTM(input_size = n_inp, hidden_size = int(n_token*mul_output), num_layers = n_hidden, 
-                                bidirectional = bidirectional, dropout = p_dropout)
+
+            #! This transformer is only instanciated to use the same exact input encoding for both the LSTM and the transformer
+            self.transformer_kps=  TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output,  kind = kind, embed_dim = embed_dim, 
+                                                            d_attention =embed_dim, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
+                                                            scene_disp = self.scene_disp, reordering = reordering)       
+
+            self.LSTM = torch.nn.LSTM(input_size = embed_dim, hidden_size = int(embed_dim*mul_output), num_layers = n_hidden, 
+                                    bidirectional = bidirectional, dropout = p_dropout)
             if bidirectional:
                 mul_output*=2
-            self.w1 = nn.Linear(int(self.stereo_size/3*n_token*mul_output), self.linear_size)
+            if self.confidence:
+                self.w1 = nn.Linear(int(self.stereo_size/3*embed_dim*mul_output), self.linear_size)
+            else:
+                self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), self.linear_size)
 
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
 
-        self.n_token = n_token
+        #self.n_token = n_token
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
         self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
@@ -198,8 +274,6 @@ class SimpleModel(nn.Module):
 
         # Final
         self.w_fin = nn.Linear(self.linear_size, self.output_size)
-
-        self.refiner = Refiner(input_size=self.output_size+1, length_sentence=12, p_dropout=self.p_dropout, num_stage=n_hidden, device=self.device)
         # NO-weight operations
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout(self.p_dropout)
@@ -231,7 +305,6 @@ class SimpleModel(nn.Module):
                         y = self.transformer_scene(x,x, env)
                 else:
                     y = self.transformer_kps(x,x, env)
-                    #y = self.transformer_model(x,x,env)
             else:
                 y,_ = self.transformer_kps.encoder.input_enc(x)
                 y = rearrange(y, 'b n t -> n b t')
@@ -239,24 +312,26 @@ class SimpleModel(nn.Module):
                 y = rearrange(y, 'n b d -> b (n d)')
 
             y = self.w1(y)
-            
-            aux = self.w_aux(y)
+            if True:
+                
+                aux = self.w_aux(y)
 
-            y = self.batch_norm1(y)
-            y = self.relu(y)
-            y = self.dropout(y)
+                y = self.batch_norm1(y)
+                y = self.relu(y)
+                y = self.dropout(y)
 
-            y = self.w_fin(y)
-            
-            y = torch.cat((y, aux), dim=1)
-            
-            if self.scene_refine and self.refiner_flag:
-                y = self.refiner(y, x.size(0))
+                y = self.w_fin(y)
+                
+                y = torch.cat((y, aux), dim=1)
+                
+                if self.scene_refine and self.refiner_flag:
+                    y = self.refiner(y, x.size(0))
 
-            return y
+                return y
         else:
             y = self.w1(x)
 
+        #TODO re-enable this part of the algorithm -> this may trigger something interesting
         y = self.batch_norm1(y)
         y = self.relu(y)
         
@@ -611,44 +686,3 @@ class MyLinear(nn.Module):
         out = x + y
 
         return out
-
-class InputLSTM(nn.Module):
-
-
-
-    def __init__(self, dim_embed = 3, conf = False, mask = False):
-        super().__init__()
-        self.dim_embed = dim_embed
-        self.conf = conf
-        self.mask = mask
-        
-        
-    def forward(self, x, surround = None):
-
-        assert x.size(1)%self.dim_embed==0, "Wrong input, we need the flattened keypoints with the confidence"
-        
-        out = rearrange(x, 'b (n t) -> b n t', t = self.dim_embed)
-        mask = self.generate_mask_keypoints(out)
-        
-        
-        if self.mask:
-            mask = self.generate_mask_keypoints(out)
-            out[mask == False] = 0
-        
-        if not self.conf : 
-            out = self.conf_remover(out)
-        
-        out = rearrange(out, 'b n t -> n b t')
-        return out
-
-    
-    def conf_remover(self, kps):
-        return kps[:,:,:2]
-    
-    def generate_mask_keypoints(self,kps):
-        #print(kps)
-        if len(kps.size())==3:
-            mask = torch.tensor( kps[:,:,2]>0)
-        else:
-            mask = torch.tensor( kps[:,2]>0)
-        return mask

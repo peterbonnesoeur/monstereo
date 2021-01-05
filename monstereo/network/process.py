@@ -355,17 +355,19 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
         dic_out['aux'] = outputs[:, 9:10]
     
     if kps_3d:
-        #print("KPS_*D HERE")
         #! CHECK HERE
-        dic_out['z_kps'] = outputs[:,-24:]
-        if outputs.shape[1] == 10+24:
+        kps_size = 24#len(outputs[0])-9
+        #print(kps_size)
+        #raise ValueError
+        dic_out['z_kps'] = outputs[:,-kps_size:]
+        if outputs.shape[1] == 10+kps_size:
             dic_out['aux'] = outputs[:, 9:10]
 
         #print("Output Z_KPS", dic_out['z_kps']  )
 
         if len(tasks)>1 and "z_kp0" in tasks:
-            for i in range(24):
-               dic_out['z_kp'+str(i)] = outputs[:, -24+i:]
+            for i in range(kps_size):
+               dic_out['z_kp'+str(i)] = outputs[:, -kps_size+i:]
                 #for i, z_kp in enumerate(dic_out['z_kps']):
                 #    dic_out['z_kp'+str(i)] = z_kp
         
@@ -427,14 +429,16 @@ def extract_labels(labels, tasks=None, kps_3d = False):
                   'ori': labels[:, 7:9], 'aux': labels[:, 10:11]}
 
     if kps_3d:
-        dic_gt_out['z_kps'] = labels[:, -24:]
+        kps_size = 24#len(labels[0])-9
+        
+        dic_gt_out['z_kps'] = labels[:, -kps_size:]
         #print("LABELS Z_KPS", dic_gt_out['z_kps'] )
 
         if tasks is not None and "z_kp0" in tasks:
                 #for i, z_kp in enumerate(dic_gt_out['z_kps']):
                 #    dic_gt_out['z_kp'+str(i)] = z_kp
-                for i in range(24):
-                    dic_gt_out['z_kp'+str(i)] = labels[:, -24+i:]
+                for i in range(kps_size):
+                    dic_gt_out['z_kp'+str(i)] = labels[:, -kps_size+i:]
 
     if tasks is not None:
         try:

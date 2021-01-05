@@ -27,7 +27,7 @@ class Loco:
 
     def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, 
                 vehicles = False, kps_3d = False, confidence=False, transformer = False, surround = False, 
-                lstm = False, scene_disp = False):
+                lstm = False, scene_disp = False, scene_refine = False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
@@ -36,6 +36,10 @@ class Loco:
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
+        self.scene_refine = scene_refine
+
+        if self.scene_refine:
+            self.scene_disp = True
 
         assert self.net in ('monstereo', 'monoloco', 'monoloco_p', 'monoloco_pp')
         if self.net == 'monstereo':
@@ -98,7 +102,8 @@ class Loco:
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
                                          linear_size=linear_size, device=self.device, transformer = transformer, 
-                                         surround = self.surround, lstm = self.lstm, scene_disp = self.scene_disp)
+                                         confidence = self.confidence, surround = self.surround, lstm = self.lstm, 
+                                         scene_disp = self.scene_disp, scene_refine = self.scene_refine)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
         else:
@@ -131,7 +136,10 @@ class Loco:
                 dic_out = extract_outputs_mono(outputs)
 
             elif self.net == 'monoloco_pp':
-                inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
+                if self.transformer and not self.confidence:
+                    inputs = preprocess_monoloco(keypoints, kk, confidence = True)
+                else:    
+                    inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
                 #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = inputs.size(-1) ).to(inputs.device)
 
                 if self.surround:
@@ -153,7 +161,11 @@ class Loco:
                     keypoints_r = torch.tensor(keypoints_r).to(self.device)
                 else:
                     keypoints_r = keypoints[0:1, :].clone()
-                inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =self.confidence)
+
+                if self.transformer and not self.confidence:
+                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =True)
+                else:    
+                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =self.confidence)
                 outputs = self.model(inputs)
 
                 outputs = cluster_outputs(outputs, keypoints_r.shape[0])
