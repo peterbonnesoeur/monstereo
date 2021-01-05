@@ -6,6 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from einops import rearrange, repeat
 
+from ..network.architectures import SCENE_INSTANCE_SIZE
 
 class ActivityDataset(Dataset):
     """
@@ -64,20 +65,18 @@ class KeypointsDataset(Dataset):
         self.scene_disp = scene_disp
         
         # Define input and output for normal training and inference
-        
-        #print("et voici le X", torch.tensor(dic_jo[phase]['X']).size())
+        #TODO : perform additionnal tests on the surround argument 
         if self.surround : 
-            #print("et voici le env", torch.tensor(dic_jo[phase]['env']).size())
             self.envs_all = torch.tensor(dic_jo[phase]['env'])
 
         
         self.inputs_all = torch.tensor(dic_jo[phase]['X'])
-        """print(len(self.inputs_all))
-        print(len(self.inputs_all[0]))
-        print(self.inputs_all[0][0])"""
 
         glob_list = []
-        if self.kps_3d:
+
+        #? A different formatting was used for the kps_3D formatting
+        # This step is just there to unfold the array befor being converted into a proper tensor
+        if type(dic_jo[phase]['Y']) is list:
             for car_object in dic_jo[phase]['Y']:
 
                 local_list=[]
@@ -90,7 +89,6 @@ class KeypointsDataset(Dataset):
                 glob_list.append(local_list)
             dic_jo[phase]['Y'] = glob_list
 
-        #print("GLOABL LIST", glob_list[:5])
 
         self.outputs_all = torch.tensor(dic_jo[phase]['Y'] )
         self.names_all = dic_jo[phase]['names']
@@ -129,19 +127,24 @@ class KeypointsDataset(Dataset):
  
     def scene_disposition_dataset(self):
         
-        threshold = 12
+        #? in  order to perofmr a scene level transfromer, we need to create arrays with a fixed number of instances. 
+        # In our case, this number of instances is SCENE_INSTANCE_SIZE and is defined in network/architecture
+        threshold = SCENE_INSTANCE_SIZE
+
+        #? Test value to indicate the end of a sequence, or in our case, the end of the sequence of instances
+        #! In practice, we do not use this value since it leads to worse results
         EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
 
         
-        print(len(np.unique(self.names_all)), len(self.names_all))
+        #print(len(np.unique(self.names_all)), len(self.names_all))
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
         output_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.outputs_all.size(-1))
-        output_v2 = torch.zeros(self.outputs_all.size())
+        #output_v2 = torch.zeros(self.outputs_all.size())
         
         kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
         
-        kps_v2 = torch.zeros(self.kps_all.size())
+        #kps_v2 = torch.zeros(self.kps_all.size())
         
         old_name = None
         name_index = 0
@@ -150,10 +153,6 @@ class KeypointsDataset(Dataset):
         print(np.argsort(self.names_all), np.sort(self.names_all))
 
         for i, index in enumerate(np.argsort(self.names_all)):
-            #if old_name is None:
-            #    inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
-            #    outputs_new[name_index,instance_index,: ] = self.outputs_all[index]
-            #    kps_new[name_index,instance_index,: ] = self.kps_all[index]
             if i == 0:
                 old_name = self.names_all[index]
         
@@ -173,9 +172,9 @@ class KeypointsDataset(Dataset):
                 
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
-                output_v2[i] = self.outputs_all[index]
+                #output_v2[i] = self.outputs_all[index]
                 kps_new[name_index,instance_index,: ] = self.kps_all[index]
-                kps_v2[i] = self.kps_all[index]
+                #kps_v2[i] = self.kps_all[index]
                 
                 instance_index+=1
                 
@@ -183,15 +182,13 @@ class KeypointsDataset(Dataset):
             else:
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
-                output_v2[i] = self.outputs_all[index]
+                #output_v2[i] = self.outputs_all[index]
                 kps_new[name_index,instance_index,: ] = self.kps_all[index]
-                kps_v2[i] = self.kps_all[index]
+                #kps_v2[i] = self.kps_all[index]
                 
                 instance_index+=1
-                
-        #if instance_index<threshold: 
-        #   inputs_new[name_index,instance_index,: ] = EOS
-        #
+
+        
         self.outputs_all = output_new
         self.inputs_all = inputs_new
         self.kps_all = kps_new
@@ -208,7 +205,7 @@ class KeypointsDataset(Dataset):
 
         glob_list = []
 
-        if self.kps_3d:
+        if type(self.dic_clst[clst]['Y']) is list:
             for car_object in self.dic_clst[clst]['Y']:
 
                 local_list=[]

@@ -38,9 +38,10 @@ class Trainer:
     lambdas = tuple([1]*len(tasks))
 
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
-                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
+                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4, r_seed=1, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
-                 confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False):
+                 confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False,
+                 scene_refine = False):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -69,7 +70,6 @@ class Trainer:
         self.dic_angles = defaultdict(list)  # initialized to zero
         if self.dataset == 'apolloscape':
             self.clusters = APOLLO_CLUSTERS
-            print("CLUSTERS", self.clusters)
         self.hidden_size = hidden_size
         self.n_stage = n_stage
         self.dir_out = dir_out
@@ -82,7 +82,10 @@ class Trainer:
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
+        self.scene_refine = scene_refine
 
+        if self.scene_refine:
+            self.scene_disp = True
         self.kps_3d = kps_3d
         self.vehicles = vehicles
 
@@ -149,24 +152,11 @@ class Trainer:
         self.mt_loss.to(self.device)
         self.mt_loss2.to(self.device)
 
-        if not self.monocular:
-
-            if self.vehicles :
-                input_size = 24*2*2
-
-                if self.confidence:
-                    input_size = 24*3*2
-
-                if self.kps_3d:
-                    output_size = 24 + 10
-                else:
-                    output_size = 10
-            else:
-                input_size = 68
-                if self.confidence:
-                    input_size = 17*3*2
-                output_size = 10
-        else:
+        if self.monocular:
+            #? The vehicles have 24 keypoints which contains the following : x,y,c
+            # X is the position on the x axis
+            # Y is the position on the y axis
+            # C is the confidence with whom this keypoint was detected
             if self.vehicles :
                 input_size = 24*2
 
@@ -174,10 +164,17 @@ class Trainer:
                     input_size = 24*3
 
                 if self.kps_3d:
+                    #? Whith keypoints 3D, we want to predict the z position of the keypoints, hence, we add 24 values to the output
                     output_size = 9 + 24
                 else:
+                    
                     output_size = 9
             else:
+                #? The humans have 17 keypoints which contains the following : x,y,c
+                # X is the position on the x axis
+                # Y is the position on the y axis
+                # C is the confidence with whom this keypoint was detected
+                input_size = 17*2*2
                 input_size = 34
                 
                 if self.confidence:
@@ -187,6 +184,36 @@ class Trainer:
 
                 if self.kps_3d:
                     output_size = 9+24
+           
+        else:
+            #! the stereo mode uses the same principle as the monocular mode but just double the number of inputs
+
+            #? The vehicles have 24 keypoints which contains the following : x,y,c
+            # X is the position on the x axis
+            # Y is the position on the y axis
+            # C is the confidence with whom this keypoint was detected
+            if self.vehicles :
+                input_size = 24*2*2
+
+                if self.confidence:
+                    input_size = 24*3*2
+
+                if self.kps_3d:
+                    #? Whith keypoints 3D, we want to predict the z position of the keypoints, hence, we add 24 values to the output
+                    output_size = 24 + 10
+                else:
+                    output_size = 10
+            else:
+                #? The humans have 17 keypoints which contains the following : x,y,c
+                # X is the position on the x axis
+                # Y is the position on the y axis
+                # C is the confidence with whom this keypoint was detected
+                input_size = 17*2*2
+                if self.confidence:
+                    input_size = 17*3*2
+                output_size = 10
+
+           
 
         print("input size : ",input_size, "\noutput size : ", output_size )
         now = datetime.datetime.now()
@@ -211,11 +238,11 @@ class Trainer:
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
                              "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} "
                              "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \nTransformer: {} \nSurround: {}"
-                             " \nLSTM: {} \nScene disp: {}"
+                             " \nLSTM: {} \nScene disp: {} \nScene refine: {}"
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
                                      output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, 
                                      kps_3d, process_mode, dropout_images, self.confidence,self.transformer, self.surround,
-                                     self.lstm, self.scene_disp))
+                                     self.lstm, self.scene_disp, self.scene_refine))
         else:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)
@@ -232,8 +259,8 @@ class Trainer:
         print(">>> creating model")
         
         self.model = SimpleModel(input_size=input_size, output_size=output_size, linear_size=hidden_size,
-                                p_dropout=dropout, num_stage=self.n_stage, device=self.device, transformer = self.transformer, 
-                                surround =self.surround, lstm = self.lstm, scene_disp = self.scene_disp)
+                                p_dropout=dropout, num_stage=self.n_stage, device=self.device, transformer = self.transformer, confidence = self.confidence,
+                                surround =self.surround, lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
         self.model.to(self.device)
         
         print(">>> model params: {:.3f}M".format(sum(p.numel() for p in self.model.parameters()) / 1000000.0))
@@ -244,10 +271,10 @@ class Trainer:
         self.optimizer = torch.optim.Adam(params=all_params, lr=lr)               
         self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=self.sched_step, gamma=self.sched_gamma)
 
+        if self.scene_refine:
+            self.model.refiner_flag=True#False
 
-        self.model.refiner_flag=False
-
-        all_params = chain(self.model.refiner.parameters(), self.mt_loss2.parameters())
+        all_params = chain(self.model.parameters(), self.mt_loss2.parameters())
         self.optimizer2 = torch.optim.Adam(params=all_params, lr=lr)               
         self.scheduler2 = lr_scheduler.StepLR(self.optimizer2, step_size=self.sched_step, gamma=self.sched_gamma)
 
@@ -268,10 +295,12 @@ class Trainer:
             for phase in ['train', 'val']:
                 if phase == 'train':
                     self.model.train()  # Set model to training mode
-                    self.model.refiner.train()
+                    if self.scene_refine:
+                        self.model.refiner.train()
                 else:
                     self.model.eval()  # Set model to evaluate mode
-                    self.model.refiner.eval()
+                    if self.scene_refine:
+                        self.model.refiner.eval()
 
                 for inputs, labels, _, _, envs in self.dataloaders[phase]:
                     inputs = inputs.to(self.device)
@@ -300,8 +329,15 @@ class Trainer:
                             self.optimizer.step()
                             self.scheduler.step()
 
-                            if self.model.scene_refine:
-                                outputs = self.model.refiner(outputs.detach(), inputs.size(0))
+                            if self.scene_refine:
+                                
+                                new_out = outputs.detach()
+                                #print(new_out.requires_grad, labels.requires_grad)
+                                new_out.requires_grad_(True)
+                                #print(new_out.requires_grad, labels.requires_grad)
+
+                                outputs = self.model.refiner(new_out, inputs.size(0))
+                                #raise ValueError
                                 loss_refine, loss_values_refine = self.mt_loss2(outputs, labels, phase=phase)
                                 self.optimizer2.zero_grad() 
                                 loss_refine.backward()
@@ -324,7 +360,7 @@ class Trainer:
                             loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
                             self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
 
-            self.cout_values(epoch, epoch_losses, running_loss, dim)
+            self.cout_values(epoch, epoch_losses, running_loss, dim, scene_disp = self.scene_disp)
 
             # deep copy the model
             if epoch_losses['val'][self.val_task][-1] < best_acc:
@@ -346,7 +382,7 @@ class Trainer:
 
         # load best model weights
         self.model.load_state_dict(best_model_wts)
-        if self.model.scene_refine:
+        if self.scene_refine:
             print("done here", self.model.refiner_flag )            
 
         return best_epoch
@@ -369,7 +405,8 @@ class Trainer:
 
         # Average distance on training and test set after unnormalizing
         self.model.eval()
-        self.model.refiner.eval()
+        if self.scene_refine:
+            self.model.refiner.eval()
 
         dic_err = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))  # initialized to zero
         self.errors = defaultdict(list)
@@ -386,6 +423,8 @@ class Trainer:
             divider = 1
             if self.scene_disp:
                 divider = 10
+
+            #? Can be modified with the original dataloader. Now, I need to understand in detail how the loss is computed
             for end in range(int(self.VAL_BS/divider), size_eval + int(self.VAL_BS/divider), int(self.VAL_BS/divider)):
                 end = end if end < size_eval else size_eval
                     
@@ -397,6 +436,7 @@ class Trainer:
                     real_values = (torch.sum(labels, dim =2)!=0).float()
                     dim.append(torch.mean(torch.sum(real_values, dim =1)))
                     labels = rearrange(labels, 'b n d -> (b n) d')
+                    confidence = (torch.sum(labels, dim=-1) != 0 )
                 labels = labels.to(self.device)
                 if self.surround:
                     envs = envs.to(self.device)
@@ -416,11 +456,11 @@ class Trainer:
                 if self.model.scene_refine:
                     outputs = self.model.refiner(outputs, inputs.size(0))
                 
-                print("DIMENSIONNALITY: ", size_eval, np.mean(dim), int((start-end)*np.mean(dim)))
-                self.compute_stats(outputs, labels, dic_err['val'], int(start -end )*np.mean(dim), clst='all')
+                print("DIMENSIONNALITY: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
+                self.compute_stats(outputs, labels, dic_err['val'], int(size_eval*np.mean(dim)), clst='all',scene_disp = self.scene_disp)
 
             print("DIMENSIONNALITY END: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
-            self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all')
+            self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all', scene_disp = self.scene_disp)
             # Evaluate performances on different clusters and save statistics
             if not self.scene_disp:
                 for clst in self.clusters:
@@ -452,12 +492,10 @@ class Trainer:
 
         # Save the model and the results
         if self.save and not load:
-            if self.model.scene_refine:
+            if self.scene_refine:
                 print("REFINEMENT OF THE MODEL", self.model.refiner_flag)
-                #self.model.refiner = self.refiner
                 self.model.refiner_flag = True
 
-            print("REFINEMENT FLAG", self.model.refiner_flag)
             #print(self.model.state_dict())
             torch.save(self.model.state_dict(), self.path_model)
 
@@ -469,10 +507,21 @@ class Trainer:
 
         return dic_err, self.model
 
-    def compute_stats(self, outputs, labels, dic_err, size_eval, clst):
+    def compute_stats(self, outputs, labels, dic_err, size_eval, clst, scene_disp = False):
         """Compute mean, bi and max of torch tensors"""
 
         loss, loss_values = self.mt_loss(outputs, labels, phase='val')
+
+        if scene_disp:
+            mask = torch.sum(labels, dim = -1) != 0
+            #loss = loss[mask]
+            #loss_values = loss_values[mask]
+            print(mask.size(), outputs.size(), labels.size())
+            print(sum(mask))
+            outputs = outputs[mask]
+            print(outputs.size())
+            labels = labels[mask]
+
         rel_frac = outputs.size(0) / size_eval
         print(outputs.size(0) , size_eval)
         tasks = self.tasks[:-1] if self.tasks[-1] == 'aux' else self.tasks  # Exclude auxiliary
@@ -482,6 +531,8 @@ class Trainer:
             #print("SIZE ERRS KPS No Mean",torch.abs(extract_outputs(outputs, kps_3d=self.kps_3d)['z_kps'] - extract_labels(labels,  kps_3d=self.kps_3d)['z_kps']).size())
             for err_kps in errs_kps:
                 self.errors_kps[clst].append(err_kps)
+
+            #? No need to norm it with rel_frac, it is updated at each iterration
             dic_err[clst]['std_kps'] = errs_kps.std()
             dic_err[clst]['mean_kps'] = errs_kps.mean()
             tasks = self.tasks[:-2] if self.tasks[-2] == 'aux' else self.tasks[:-1]  # Exclude auxiliary and z_kps
@@ -513,7 +564,7 @@ class Trainer:
             else:
                 self.dic_angles[str(-angle)].append(err)
         print(rel_frac, size_eval, outputs.size(0))
-        assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
+        #assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
         bis = extract_outputs(outputs,  kps_3d=self.kps_3d)['bi'].cpu()
@@ -521,7 +572,9 @@ class Trainer:
         bi_perc = float(torch.sum(errs <= bis)) / errs.shape[0]
         dic_err[clst]['bi'] += bi * rel_frac
         dic_err[clst]['bi%'] += bi_perc * rel_frac
-        dic_err[clst]['std'] = errs.std()
+        #! computationnally incorrect but it will help us for the debugging
+        dic_err[clst]['std'] += errs.std() * rel_frac
+        #dic_err[clst]['std'] = errs.std()
 
         
 
@@ -534,9 +587,9 @@ class Trainer:
 
             errs = torch.norm(extract_outputs(outputs)['xyzd'][:,:3] - extract_labels(labels)['xyzd'][:,:3] , p = 2, dim = 1)[selected[:,0]]
 
-            dic_err[clst]['threshold_loose_abs']= [torch.sum((errs < threshold_loose[1])).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_strict_abs']= [torch.sum( errs < threshold_strict[1]).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_mean_abs'] = [torch.sum( errs < threshold_mean[1]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_loose_abs']+= torch.sum((errs < threshold_loose[1])).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_strict_abs']+= torch.sum( errs < threshold_strict[1]).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_mean_abs'] += torch.sum( errs < threshold_mean[1]).double()/torch.sum(selected)*rel_frac
 
 
             errs = (torch.abs((extract_outputs(outputs)['d'][selected] - extract_labels(labels)['d'][selected])/ extract_labels(labels)['d'][selected]))
@@ -546,16 +599,16 @@ class Trainer:
             errs = torch.norm(equation , p = 2, dim = 1)[selected[:,0]]
 
             #print(errs)
-            dic_err[clst]['threshold_loose_rel']= [torch.sum((errs < threshold_loose[3])).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_strict_rel']= [torch.sum( errs < threshold_strict[3]).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_mean_rel'] = [torch.sum( errs < threshold_mean[3]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_loose_rel']+= torch.sum((errs < threshold_loose[3])).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_strict_rel']+= torch.sum( errs < threshold_strict[3]).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_mean_rel'] += torch.sum( errs < threshold_mean[3]).double()/torch.sum(selected)*rel_frac
 
 
             errs_angles = (extract_outputs(outputs)['yaw'][0] - extract_labels(labels)['yaw'][0])[selected]
 
-            dic_err[clst]['threshold_loose_ang']= [torch.sum((errs_angles < threshold_loose[2])).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_strict_ang']= [torch.sum( errs_angles < threshold_strict[2]).double()/torch.sum(selected)]
-            dic_err[clst]['threshold_mean_ang'] = [torch.sum( errs_angles < threshold_mean[2]).double()/torch.sum(selected)]
+            dic_err[clst]['threshold_loose_ang']+= torch.sum((errs_angles < threshold_loose[2])).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_strict_ang']+= torch.sum( errs_angles < threshold_strict[2]).double()/torch.sum(selected)*rel_frac
+            dic_err[clst]['threshold_mean_ang'] += torch.sum( errs_angles < threshold_mean[2]).double()/torch.sum(selected)*rel_frac
 
         # (Don't) Save auxiliary task results
         if self.monocular:
@@ -570,7 +623,7 @@ class Trainer:
             for i, _ in enumerate(self.tasks):
                 dic_err['sigmas'][i] += float(loss_values[len(tasks) + i + 1].item()) * rel_frac
 
-    def cout_stats(self, dic_err, size_eval, clst):
+    def cout_stats(self, dic_err, size_eval, clst, scene_disp = False):
         if clst == 'all':
             print('-' * 120)
 
@@ -642,11 +695,11 @@ class Trainer:
                     "Threshold strict : distance_abs: {:.2f} %, distance_rel: {:.2f} %, angle: {:.2f} \n"
                     "Threshold mean : distance_abs: {:.2f} %, distance_rel: {:.2f} %, angle: {:.2f} \n"
                     .format(clst,
-                            dic_err[clst]['threshold_loose_abs'][0]*100, dic_err[clst]['threshold_loose_rel'][0]*100,  dic_err[clst]['threshold_loose_ang'][0], 
-                            dic_err[clst]['threshold_strict_abs'][0]*100,  dic_err[clst]['threshold_strict_rel'][0]*100,  dic_err[clst]['threshold_strict_ang'][0],
-                            dic_err[clst]['threshold_mean_abs'][0] * 100, dic_err[clst]['threshold_mean_rel'][0]*100, dic_err[clst]['threshold_mean_ang'][0] ))
+                            dic_err[clst]['threshold_loose_abs']*100, dic_err[clst]['threshold_loose_rel']*100,  dic_err[clst]['threshold_loose_ang'], 
+                            dic_err[clst]['threshold_strict_abs']*100,  dic_err[clst]['threshold_strict_rel']*100,  dic_err[clst]['threshold_strict_ang'],
+                            dic_err[clst]['threshold_mean_abs']* 100, dic_err[clst]['threshold_mean_rel']*100, dic_err[clst]['threshold_mean_ang'] ))
 
-    def cout_values(self, epoch, epoch_losses, running_loss, dim = None):
+    def cout_values(self, epoch, epoch_losses, running_loss, dim = None, scene_disp = False):
 
 
         string = '\r' + '{:.0f} '

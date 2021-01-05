@@ -16,7 +16,7 @@ from .trainer import Trainer
 class HypTuning:
 
     def __init__(self, joints, epochs, monocular, dropout, multiplier=1, r_seed=1, vehicles=False, kps_3d = False, dataset = 'kitti', 
-                confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False):
+                confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False, scene_refine = False):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -35,6 +35,10 @@ class HypTuning:
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
+
+        self.scene_refine = scene_refine
+        if self.scene_refine:
+            self.scene_disp = True
 
         dir_out = os.path.join('data', 'models')
         dir_logs = os.path.join('data', 'logs')
@@ -93,7 +97,7 @@ class HypTuning:
                                sched_gamma=sched_gamma, hidden_size=hidden_size, n_stage=n_stage,
                                save=False, print_loss=False, r_seed=self.r_seed, vehicles=self.vehicles, kps_3d = self.kps_3d,
                                dataset = self.dataset, confidence= self.confidence, transformer = self.transformer, 
-                               surround = self.surround, lstm = self.lstm, scene_disp =self.scene_disp)
+                               surround = self.surround, lstm = self.lstm, scene_disp =self.scene_disp, scene_refine = self.scene_refine)
 
             best_epoch = training.train()
             dic_err, model = training.evaluate()
