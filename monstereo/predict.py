@@ -28,11 +28,14 @@ def predict(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if 'mono' in args.mode:
         monoloco = Loco(model=args.model, net='monoloco_pp',
-                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence)
+                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence,
+                        transformer = args.transformer,surround = args.surround, lstm = args.lstm, scene_disp = args.scene_disp)
       
     if 'stereo' in args.mode:
         monstereo = Loco(model=args.model, net='monstereo',
-                         device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence)
+                         device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence,
+                        transformer = args.transformer,surround = args.surround, lstm = args.lstm, scene_disp = args.scene_disp)
+      
 
     # data
     data = ImageList(args.images, scale=args.scale)
@@ -97,7 +100,6 @@ def predict(args):
 
                 print('image', idx, image_path, output_path)
                 keypoint_sets, scores, pifpaf_out = pifpaf.forward(image, processed_image_cpu, fields)
-
                 if ii == 0:
                     pifpaf_outputs = [keypoint_sets, scores, pifpaf_out]  # keypoints_sets and scores for pifpaf printing
                     images_outputs = [image]  # List of 1 or 2 elements with pifpaf tensor and monoloco original image

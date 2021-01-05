@@ -39,6 +39,7 @@ def cli():
     prep_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
     prep_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     prep_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
+    prep_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
 
 
 
@@ -59,6 +60,8 @@ def cli():
     predict_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
     predict_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
     predict_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    predict_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
+    predict_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     # Pifpaf
     predict_parser.add_argument('--scale', default=1.0, type=float, help='change the scale of the image to preprocess')
 
@@ -110,7 +113,7 @@ def cli():
     training_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
     training_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     training_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
-
+    training_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     
     # Evaluation
     eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
@@ -139,7 +142,7 @@ def cli():
     eval_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
     eval_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     eval_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
-
+    eval_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     
     args = parser.parse_args()
     return args
@@ -188,7 +191,7 @@ def main():
                                    vehicles = args.vehicles, kps_3d = args.kps_3d,
                                    dataset = args.dataset, confidence = args.confidence,
                                    transformer = args.transformer, surround = args.surround,
-                                   lstm = args.lstm, scenes_disp = args.scene_disp)
+                                   lstm = args.lstm, scenes_disp = args.scene_disp, scene_refine = args.scene_refine)
             hyp_tuning.train()
         else:
 
@@ -198,7 +201,7 @@ def main():
                                n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
                                r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.kps_3d,
                                dataset = args.dataset, confidence = args.confidence, transformer = args.transformer,
-                               surround = args.surround, lstm = args.lstm, scene_disp= args.scene_disp)
+                               surround = args.surround, lstm = args.lstm, scene_disp= args.scene_disp, scene_refine = args.scene_refine)
 
             _ = training.train()
             _ = training.evaluate()
@@ -228,7 +231,7 @@ def main():
                 kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
                                           hidden_size=args.hidden_size, vehicles = args.vehicles, model_mono = args.model_mono,
                                           confidence = args.confidence, transformer = args.transformer, surround = args.surround,
-                                          lstm = args.lstm, scene_disp = args.scene_disp)
+                                          lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine)
                 kitti_txt.run()
 
             if args.dataset == 'kitti':
