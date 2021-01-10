@@ -323,6 +323,7 @@ class Printer:
     def draw(self, figures, axes, dic_out, image, show_all=False, draw_text=True, legend=True, draw_box=False,
              save=False, show=False, kps=None):
 
+        draw_box = False
         keypoints = []
         if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             _, _, pifpaf_out = kps[:]

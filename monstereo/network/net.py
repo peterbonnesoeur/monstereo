@@ -14,9 +14,10 @@ from einops import rearrange, repeat
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
-    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array
+    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes
 from .architectures import MonolocoModel, SimpleModel
 
+from .architectures import SCENE_INSTANCE_SIZE
 
 class Loco:
     """Class for both MonoLoco and MonStereo"""
@@ -140,6 +141,8 @@ class Loco:
                     inputs = preprocess_monoloco(keypoints, kk, confidence = True)
                 else:    
                     inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
+
+                #print("In forward size,",inputs.size())
                 #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = inputs.size(-1) ).to(inputs.device)
 
                 if self.surround:
@@ -148,12 +151,34 @@ class Loco:
                 else:
                     if len(inputs.size())<3 and self.scene_disp:
                         inputs = inputs.unsqueeze(0)
-                        #EOS
-                    #print("INPUTS SIZE", inputs.size(), len(inputs.size()))
+                        
+                        pad_size = SCENE_INSTANCE_SIZE- inputs.size(1)
+                        #TODO first play with the a parameter and see if removing it change the result
+                        #! my guess is that we can remove such an operation`
+                        #a = torch.zeros((1, pad_size, inputs.size(-1))).to(inputs.device)
+                        #inputs=torch.cat((inputs, a), dim = 1)
 
+                        if True:
+                            indices = torch.arange(0, inputs.size(1)).to(inputs.device)
+                            test = reorganise_scenes(inputs[0])
+
+                            if test is not None:
+                                indices[:len(test)] = test
+                            inputs = inputs[:, indices]
+                            
+
+                    #print("INPUTS SIZE", inputs.size())
+
+                    #TODO: do the reorganisation well for the scene_disp
                     outputs = self.model(inputs)
                     if self.scene_disp:
-                        outputs= self.model.get_output(inputs, outputs)
+                        #outputs = outputs[:(SCENE_INSTANCE_SIZE- pad_size), :]
+                        #print("OUTPUTS")
+                        #print(outputs)
+                        if True:
+                            outputs = outputs[indices[:len(outputs)],:]
+                        #print("Now")
+                        #print(outputs, indices[:len(outputs)])
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:
@@ -226,23 +251,14 @@ class Loco:
             
             z_kps_pred = torch.tensor(dic_in['z_kps']).unsqueeze(2).repeat(1,1,3) # Z component repeated for the projection
             
-            #print("KPS",kps.size())
-            #print("DIC_IN",z_kps_pred.size())
-            
             
             res = pixel_to_camera(kps[:, 0:2, :], kk, 1)
-            #z_pred_mod = z_kps_pred.unsqueeze(2).repeat(1,1,3)
-            #print("Z_pred_size", z_pred_mod.size())
-            #print("res size", res.size())
 
 
             res = res*z_kps_pred
             
             conf_kps = kps[:,2,:].tolist()  #select the  detected keypoints with a conf > 0
-            #print("CONF_KPS",conf_kps)
-            #print("conf size",conf_kps.size())
-            #print("res size",res.size())
-            #print("xyz met norm", res[0:3])
+
 
             kps_3d_pred = res.tolist()
 
@@ -314,8 +330,6 @@ class Loco:
                 dic_out['kps_3d_pred'].append(kps_3d_pred[idx])
                 dic_out['kps_3d_conf'].append(conf_kps[idx])
 
-                #if idx in matches:
-                #    z_kps_gt = torch.tensor([el[-1] for el in dic_gt['ys']])
             # For MonStereo / MonoLoco++
             try:
                 dic_out['angles'].append(float(dic_in['yaw'][0][idx]))  # Predicted angle

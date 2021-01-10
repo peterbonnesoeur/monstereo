@@ -128,19 +128,16 @@ class KeypointsDataset(Dataset):
     def scene_disposition_dataset(self):
         
         #? in  order to perofmr a scene level transfromer, we need to create arrays with a fixed number of instances. 
-        # In our case, this number of instances is SCENE_INSTANCE_SIZE and is defined in network/architecture
+        #! In our case, this number of instances is SCENE_INSTANCE_SIZE and is defined in network/architecture
         threshold = SCENE_INSTANCE_SIZE
 
         #? Test value to indicate the end of a sequence, or in our case, the end of the sequence of instances
         #! In practice, we do not use this value since it leads to worse results
         EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
 
-        
-        #print(len(np.unique(self.names_all)), len(self.names_all))
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
         output_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.outputs_all.size(-1))
-        #output_v2 = torch.zeros(self.outputs_all.size())
         
         kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
         
@@ -156,25 +153,27 @@ class KeypointsDataset(Dataset):
             if i == 0:
                 old_name = self.names_all[index]
         
+            #? If there are more instances on a scene than the maximum size of the array, the inputs are discarded.
             if instance_index >= threshold and old_name == self.names_all[index]:
                 print("Too many instances in the images", self.names_all[index])
                 pass
+                
+
+            #? If the old name is different from the new name in the list
             elif old_name != self.names_all[index]:
+                #! In practice, do not use this value since it leads to worse results
                 #if instance_index<threshold:
                 #    inputs_new[name_index,instance_index,: ] = EOS
                 instance_index = 0
+
                 if old_name is not None:
-                    name_index+=1
-                
-                #print(name_index, self.names_all[index], old_name, index)
+                    name_index+=1          
                 old_name = self.names_all[index]
                 
                 
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
-                #output_v2[i] = self.outputs_all[index]
                 kps_new[name_index,instance_index,: ] = self.kps_all[index]
-                #kps_v2[i] = self.kps_all[index]
                 
                 instance_index+=1
                 
@@ -182,9 +181,7 @@ class KeypointsDataset(Dataset):
             else:
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
-                #output_v2[i] = self.outputs_all[index]
                 kps_new[name_index,instance_index,: ] = self.kps_all[index]
-                #kps_v2[i] = self.kps_all[index]
                 
                 instance_index+=1
 

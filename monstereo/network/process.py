@@ -107,7 +107,6 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     #if kps_3d:
     #    kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
 
-    #print("WITH KPS_3D", kps_out)
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
         
@@ -119,6 +118,42 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     return kps_out#, keypoints[:, 2, :]
 
 
+def reorganise_scenes(array, condition= "None", refining = False, descending = True):  
+        #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
+        
+        if refining:
+            return None
+        else:
+            
+            array = rearrange(array[:,:], 'b (n d) -> b n d', d = 3)
+
+            mask = array[:,:,-1] != 0
+            
+            if condition == "ypos":
+                a = (torch.sum(array[:,:,1], dim = 1)/torch.sum(mask, dim = 1)).to(array.device)
+                
+            elif condition == "xpos":
+                a = torch.sum(array[:,:,0], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
+                
+            elif condition == "height":
+                a = (torch.max(array[:,:,1], dim = 1)[0]- torch.min(array[:,:,1], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)
+                
+            elif condition == "width":
+                a = (torch.max(array[:,:,0], dim = 1)[0]- torch.min(array[:,:,0], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)  
+
+            elif condition == "kps_num":
+                a = torch.sum(mask, dim = 1).to(array.device)
+                
+            elif condition == "confidence":
+                a = torch.sum(array[:,:,-1], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
+            else:
+                return torch.arange(0, array.size(0)).to(array.device)
+            
+            sorted_array, indices = torch.sort(a, descending = descending)
+            # Remove the incorrect elements -> technique to not consider the padde elements. 
+            new_mask = ((torch.isinf(sorted_array)+torch.isnan(sorted_array)) == False).to(array.device)
+                
+            return indices[new_mask]
 
 
 def clear_keypoints(keypoints, nb_dim = 2):
@@ -344,7 +379,7 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
     """
     dic_out = {'x': outputs[:, 0],
                'y': outputs[:, 1],
-               'd': outputs[:, 2:4],
+               'd': outputs[:, 2:4], # Contain the distance and uncertianty term (for the Laplacian Loss)
                'h': outputs[:, 4],
                'w': outputs[:, 5],
                'l': outputs[:, 6],

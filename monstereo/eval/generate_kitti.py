@@ -30,13 +30,17 @@ class GenerateKitti:
 
 
     def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, 
-                model_mono = None, confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False):
+                model_mono = None, confidence = False, transformer = False, surround = False, lstm = False, 
+                scene_disp = False, scene_refine = False):
 
         # Load monoloco
         use_cuda = torch.cuda.is_available()
         device = torch.device("cuda" if use_cuda else "cpu")
 
         self.scene_disp = scene_disp
+        self.scene_refine = scene_refine
+        if self.scene_refine:
+            self.scene_disp = True
         if 'monstereo' in self.METHODS:
             self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, p_dropout=p_dropout,
                                 linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer,
@@ -55,7 +59,8 @@ class GenerateKitti:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
                                     p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, 
-                                    transformer = transformer, surround= surround, lstm = lstm, scene_disp = scene_disp)
+                                    transformer = transformer, surround= surround, lstm = lstm, scene_disp = self.scene_disp, 
+                                    scene_refine=self.scene_refine)
 
         if 'monoloco' in self.METHODS:
             model_mono = 'data/models/monoloco-190717-0952.pkl'  # KITTI
@@ -99,7 +104,6 @@ class GenerateKitti:
         print("\n")
         for key in self.METHODS:
             pass
-            #make_new_directory(dir_out[key])
 
         for key in self.baselines:
             dir_out[key] = os.path.join('data', 'kitti', key)

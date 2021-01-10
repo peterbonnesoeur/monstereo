@@ -24,7 +24,7 @@ from torch.optim import lr_scheduler
 
 from .datasets import KeypointsDataset
 from .losses import CompositeLoss, MultiTaskLoss, AutoTuneMultiTaskLoss
-from ..network import extract_outputs, extract_labels
+from ..network import extract_outputs, extract_labels, reorganise_scenes
 from ..network.architectures import SimpleModel, Refiner
 from ..utils import set_logger, threshold_loose, threshold_mean, threshold_strict, APOLLO_CLUSTERS
 
@@ -66,8 +66,10 @@ class Trainer:
         self.sched_step = sched_step
         self.sched_gamma = sched_gamma
         self.clusters = ['10', '20', '30', '50', '>50']
+        #? Those angles are there to see if a peculiar orientation leads 
+        #? to a general deterioration of the results
         self.angles= [0, 20, 40, 60, 80, 100, 120, 140, 160, 180]
-        self.dic_angles = defaultdict(list)  # initialized to zero
+        self.dic_angles = defaultdict(list)
         if self.dataset == 'apolloscape':
             self.clusters = APOLLO_CLUSTERS
         self.hidden_size = hidden_size
@@ -131,9 +133,6 @@ class Trainer:
             else:
                 self.tasks = tuple(list(self.tasks) +['z_kps'])
                 self.lambdas = list(self.lambdas) + [1]
-
-            #print("TASKS", self.tasks)
-            #print("LAMBDAS", self.lambdas)
 
         else:
             if self.monocular and self.tasks[-1] == 'aux':
@@ -250,7 +249,7 @@ class Trainer:
         #! For now on, the transformer tag does not do anything to the Keypoint dataset loader
         # Dataloader
         self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer =self.transformer, 
-                            surround = self.surround, scene_disp = self.scene_disp),batch_size=bs, shuffle=True) for phase in ['train', 'val']} #the drop_last flag is only there to forget the latest value o the dataset in case of a batch normalization where we don't have more than 1 input in the batch
+                            surround = self.surround, scene_disp = self.scene_disp),batch_size=bs, shuffle=True) for phase in ['train', 'val']} 
         self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer = self.transformer, 
                             surround = self.surround, scene_disp = self.scene_disp)) for phase in ['train', 'val']}
 
@@ -285,7 +284,6 @@ class Trainer:
         best_training_acc = 1e6
         best_epoch = 0
         epoch_losses = defaultdict(lambda: defaultdict(list))
-        
         dim = defaultdict(list) if self.scene_disp else None
 
         for epoch in range(self.num_epochs):
@@ -306,8 +304,35 @@ class Trainer:
                     inputs = inputs.to(self.device)
                     if self.scene_disp:
                         real_values = (torch.sum(labels, dim =2)!=0).float()
-                        dim[phase].append(torch.mean(torch.sum(real_values, dim =1)))
+                        #? Mask used to only retrieve the non padded instances
+                        mask = (torch.sum(labels, dim =2)!=0)
+
+                        #? reorganize the output in a logical order (for example the height, width confidence for each instances)
+                        #? possible values = (ypos, xpos, height, width, confidence)
+
+                        if True:
+                            for index in range(inputs.size(0)):
+                                indices = torch.arange(0, inputs.size(1)).to(labels.device)
+
+                                #? reorganise the instances in a scene depending on their height, width, position
+                                test = reorganise_scenes(inputs[index])
+                                if test is not None:
+                                    indices[:len(test)] = test
+                                #print(indices)
+                                #print(inputs[index])
+                                #?reorganise the inputs depending on the chosen parameter
+                                inputs[index] = inputs[index, indices]
+                                #print(inputs[index])
+                                #?reorganise the labels (aka ground truth) depending on the chosen parameter
+                                labels[index] = labels[index, indices]
+
+                        
+                        
                         labels = rearrange(labels, 'b n d -> (b n) d')
+                        mask = rearrange(mask, 'b n ->  (b n)')
+                        labels = labels[mask]
+                        if epoch == 0:
+                            dim[phase].append(len(labels))
                     labels = labels.to(self.device)
                     if self.surround:
                         envs = envs.to(self.device)
@@ -320,7 +345,9 @@ class Trainer:
                             else:
                                 outputs = self.model(inputs)
                                 if self.scene_disp:
-                                    outputs= self.model.get_output(inputs, outputs)
+                                    #? Retrieve the non padded outputs -> only train the network for the relevant inputs
+                                    #? despite the conditionnal formatting and the padding
+                                    outputs = outputs[mask]
 
                             loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
                             self.optimizer.zero_grad() 
@@ -329,8 +356,9 @@ class Trainer:
                             self.optimizer.step()
                             self.scheduler.step()
 
+                            #! Old version, do not put true, do not use
                             if self.scene_refine:
-                                
+                                """
                                 new_out = outputs.detach()
                                 #print(new_out.requires_grad, labels.requires_grad)
                                 new_out.requires_grad_(True)
@@ -343,7 +371,8 @@ class Trainer:
                                 loss_refine.backward()
                                 torch.nn.utils.clip_grad_norm_(self.model.refiner.parameters(), 2)
                                 self.optimizer2.step()
-                                self.scheduler2.step()
+                                self.scheduler2.step()"""
+                                pass
 
 
                         else:
@@ -352,10 +381,11 @@ class Trainer:
                             else:
                                 outputs = self.model(inputs)
                                 if self.scene_disp:
-                                    outputs= self.model.get_output(inputs, outputs)
-
+                                    #? Retrieve the non padded outputs -> only train the network for the relevant inputs
+                                    #? despite the conditionnal formatting and the padding
+                                    outputs = outputs[mask]
                                 if self.model.scene_refine:
-                                    outputs = self.model.refiner(outputs, inputs.size(0))
+                                    pass
                         with torch.no_grad():
                             loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
                             self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
@@ -397,6 +427,8 @@ class Trainer:
 
         # To load a model instead of using the trained one
 
+        debug = False
+
         self.confidence = confidence
         self.transformer = transformer
         self.lstm = lstm
@@ -414,6 +446,7 @@ class Trainer:
         dic_err['val']['sigmas'] = [0.] * len(self.tasks)
         dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d, transformer =self.transformer, surround = self.surround, scene_disp = self.scene_disp)
         size_eval = len(dataset)
+        final_size = 0
         if self.scene_disp:
             dim = []
         else:
@@ -421,8 +454,7 @@ class Trainer:
         start = 0
         with torch.no_grad():
             divider = 1
-            if self.scene_disp:
-                divider = 10
+
 
             #? Can be modified with the original dataloader. Now, I need to understand in detail how the loss is computed
             for end in range(int(self.VAL_BS/divider), size_eval + int(self.VAL_BS/divider), int(self.VAL_BS/divider)):
@@ -434,8 +466,24 @@ class Trainer:
 
                 if self.scene_disp:
                     real_values = (torch.sum(labels, dim =2)!=0).float()
-                    dim.append(torch.mean(torch.sum(real_values, dim =1)))
+                    mask = (torch.sum(labels, dim =2)!=0)
+                    #dim.append(torch.mean(torch.sum(real_values, dim =1)))
+                    if True:
+                        for index in range(inputs.size(0)):
+                            indices = torch.arange(0, inputs.size(1)).to(labels.device)
+
+                            #? reorganise the instances in a scene depending on their height, width, position
+                            test = reorganise_scenes(inputs[index])
+                            if test is not None:
+                                indices[:len(test)] = test
+                            #?reorganise the inputs depending on the chosen parameter
+                            inputs[index] = inputs[index, indices]
+                            #?reorganise the labels (aka ground truth) depending on the chosen parameter
+                            labels[index] = labels[index, indices]
+                        
                     labels = rearrange(labels, 'b n d -> (b n) d')
+                    mask = rearrange(mask, 'b n ->  (b n)')
+                    labels = labels[mask]
                     confidence = (torch.sum(labels, dim=-1) != 0 )
                 labels = labels.to(self.device)
                 if self.surround:
@@ -453,14 +501,20 @@ class Trainer:
                 else:
                     outputs = self.model(inputs)
 
-                if self.model.scene_refine:
-                    outputs = self.model.refiner(outputs, inputs.size(0))
-                
-                print("DIMENSIONNALITY: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
-                self.compute_stats(outputs, labels, dic_err['val'], int(size_eval*np.mean(dim)), clst='all',scene_disp = self.scene_disp)
+                if self.scene_disp:
+                    outputs = outputs[mask]
 
-            print("DIMENSIONNALITY END: ", size_eval, np.mean(dim), int(size_eval*np.mean(dim)))
-            self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all', scene_disp = self.scene_disp)
+                if self.model.scene_refine:
+                    #outputs = self.model.refiner(outputs, inputs.size(0))
+                    pass
+                
+
+                #self.compute_stats(outputs, labels, dic_err['val'], int(size_eval*np.mean(dim)), clst='all',scene_disp = self.scene_disp)
+                self.compute_stats(outputs, labels, dic_err['val'], len(labels), clst='all',scene_disp = self.scene_disp)
+                final_size+=len(labels)
+
+            #self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all', scene_disp = self.scene_disp)
+            self.cout_stats(dic_err['val'], final_size, clst='all', scene_disp = self.scene_disp)
             # Evaluate performances on different clusters and save statistics
             if not self.scene_disp:
                 for clst in self.clusters:
@@ -479,9 +533,10 @@ class Trainer:
                         if self.scene_disp:
                             outputs= self.model.get_output(inputs, outputs)
 
+                    #! Old version, do not put true, do not use
                     if self.model.scene_refine:
-                        outputs = self.model.refiner(outputs, inputs.size(0))
-                    #print(outputs.size)
+                        #outputs = self.model.refiner(outputs, inputs.size(0))
+                        pass
                     self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst=clst)
                     self.cout_stats(dic_err['val'], size_eval, clst=clst)
 
@@ -492,11 +547,13 @@ class Trainer:
 
         # Save the model and the results
         if self.save and not load:
-            if self.scene_refine:
-                print("REFINEMENT OF THE MODEL", self.model.refiner_flag)
-                self.model.refiner_flag = True
 
-            #print(self.model.state_dict())
+            #! Old version, do not put true, do not use
+            if self.scene_refine:
+                #print("REFINEMENT OF THE MODEL", self.model.refiner_flag)
+                #self.model.refiner_flag = True
+                pass
+
             torch.save(self.model.state_dict(), self.path_model)
 
             print('-' * 120)
@@ -512,15 +569,16 @@ class Trainer:
 
         loss, loss_values = self.mt_loss(outputs, labels, phase='val')
 
-        if scene_disp:
+        #! Old version, do not put true, do not use
+        if scene_disp and False:
             mask = torch.sum(labels, dim = -1) != 0
             #loss = loss[mask]
             #loss_values = loss_values[mask]
             print(mask.size(), outputs.size(), labels.size())
             print(sum(mask))
-            outputs = outputs[mask]
+            #outputs = outputs[mask]
             print(outputs.size())
-            labels = labels[mask]
+            #labels = labels[mask]
 
         rel_frac = outputs.size(0) / size_eval
         print(outputs.size(0) , size_eval)
@@ -535,6 +593,7 @@ class Trainer:
             #? No need to norm it with rel_frac, it is updated at each iterration
             dic_err[clst]['std_kps'] = errs_kps.std()
             dic_err[clst]['mean_kps'] = errs_kps.mean()
+
             tasks = self.tasks[:-2] if self.tasks[-2] == 'aux' else self.tasks[:-1]  # Exclude auxiliary and z_kps
 
 
@@ -686,8 +745,6 @@ class Trainer:
                 self.logger_apolloscape(clst,dic_err)
                 
 
-
-
     def logger_apolloscape(self, clst, dic_err):
         
         self.logger.info("Apolloscape evaluation, for cluster : {} val set: \n"
@@ -701,20 +758,16 @@ class Trainer:
 
     def cout_values(self, epoch, epoch_losses, running_loss, dim = None, scene_disp = False):
 
-
         string = '\r' + '{:.0f} '
         format_list = [epoch]
         for phase in running_loss:
             string = string + phase[0:1].upper() + ':'
             for el in running_loss['train']:
-                dim_coef = 1 if dim == None else np.mean(dim[phase])
+                if scene_disp:
+                    loss = running_loss[phase][el] / np.sum(dim[phase])
+                else:
+                    loss = running_loss[phase][el] / (self.dataset_sizes[phase])
 
-                #print("PARAMETRE A CHIER", dim, dim_coef)
-                loss = running_loss[phase][el] / (self.dataset_sizes[phase] * dim_coef)
-                #if dim is None:
-                #    loss = running_loss[phase][el] / (self.dataset_sizes[phase] )
-                #else:
-                #    loss = running_loss[phase][el] / (self.dataset_sizes[phase] * np.mean(dim[phase]))
                 epoch_losses[phase][el].append(loss)
                 if el == 'all':
                     string = string + ':{:.1f}  '

@@ -23,7 +23,7 @@ input="splits/kitti_val.txt"
 
 dataset="kitti"
 
-args="--z_max 50"
+args="--z_max 50 --draw_box"
 
 process_modes=("NULL_ISNT_IT" "neg" "mean" "mean_std")
 

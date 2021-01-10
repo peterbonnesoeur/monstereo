@@ -1,20 +1,20 @@
 #!/bin/bash -l
 
-#SBATCH --nodes              1
+#SBATCH --nodes              2
 
 #SBATCH --ntasks             1
-#SBATCH --cpus-per-task      3
+#SBATCH --cpus-per-task      8
 #SBATCH --partition gpu  
-#SBATCH --reservation=vita-2020-11 
+
 #SBATCH --qos gpu 
 #SBATCH --gres gpu:1
-#SBATCH --time 05:00:00
+#SBATCH --time 24:00:00
 
 dir_ann_car='data/apollo-pifpaf/annotations'
 
 ouput_type='combined_2'
 
-num_images='70'
+num_images='50'
 
 
 input="data/apolloscape/train/split/validation-list.txt"
@@ -22,16 +22,16 @@ input="data/apolloscape/train/split/validation-list.txt"
 dataset="apolloscape"
 
 
-args="--z_max 50"
+args="--z_max 50 --confidence --kps_3d" # --draw_box
 
 
 
 # Regular loop
 
 process_modes=('mean')
-output_dirs=('visual_tests/val_apolloscape_mean')
-models=('data/models/ms-201109-122012-vehicles-apolloscape-apolloscape.pkl')
-names_gt=('data/arrays/names-apolloscape-train-201109-122140.json')
+output_dirs=('export/conf')
+models=('data/models/ms-210109-203444-vehicles-kps_3d-apolloscape.pkl')
+names_gt=('data/arrays/joints-apolloscape-train-kps_3d-210103-151042.json')
 
 len=${#process_modes[@]}
 

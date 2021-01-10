@@ -114,10 +114,8 @@ class SimpleModel(nn.Module):
         #? num adds a counter at the end of the data of the keypoints. It is a simple index going from [0, N-1] where N is the size of the sequence (hence, the inputs for the transformer grows from n_inp to n_inp + 1).  
         
         
-        if scene_disp:
-            reordering = True
-        else:
-            reordering = False
+
+        reordering = False
 
         length_scene_sequence = SCENE_INSTANCE_SIZE #? in the case of the scene disposition (where we do not look at the keypoints but at the sequence of keypoints in our transformer),
                                                     #? we needed to create a padded array of fixed size to put our instances. In this case, the instances in the sequence are the set of 
@@ -161,7 +159,7 @@ class SimpleModel(nn.Module):
                 else:
                     self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), self.linear_size)
 
-            elif self.scene_refine: 
+            elif self.scene_refine and False: 
                 #? This method is a bit peculiar since we are at first using our regular keypoint-based transformer to obtain some results. 
                 #? But right after that step, we are using a scene transformer reasonning on the outputs of the transformer.
                 #! The system obtained acts as a refining step for our model
@@ -172,8 +170,11 @@ class SimpleModel(nn.Module):
                 elif kind == 'num':
                     embed_dim = n_inp +1 #? For an explanation, see the comment on top for the variable "kind"
 
-                d_attention = int(embed_dim/2) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
+                d_attention = int(embed_dim/n_head) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
                                                #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
+
+
+
 
                 self.transformer_kps=  TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output, kind = kind, embed_dim = embed_dim, 
                                                                 d_attention =d_attention, num_heads = n_head, n_layers = n_hidden, confidence = self.confidence, 
@@ -189,6 +190,46 @@ class SimpleModel(nn.Module):
                     self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), self.linear_size)
 
                 #TODO for the refiner, remove the auxiliary term
+                self.refiner = Refiner(input_size=self.output_size+1, length_sentence=length_scene_sequence, p_dropout=self.p_dropout, num_stage=n_hidden, device=self.device)
+
+            elif scene_refine:
+                assert self.transformer, "Currently, the scene disposition method is only compatible with the transformer"
+                n_inp = self.linear_size
+                n_hidden = 1
+                n_target_words = self.output_size#embed_dim*mul_output
+
+                if kind == 'cat':
+                    embed_dim = n_inp + 2
+                elif kind == 'num':
+                    embed_dim = n_inp +1
+                else:
+                    embed_dim = n_inp
+
+                d_attention = int(embed_dim/n_head)
+
+                #! TEST
+                if kind == 'cat':
+                    embed_dim2 = self.stereo_size + 2 #? For an explanation, see the comment on top for the variable "kind"
+                elif kind == 'num':
+                    embed_dim2 = self.stereo_size + 1 #? For an explanation, see the comment on top for the variable "kind"
+                else:
+                    embed_dim2 = self.stereo_size
+
+                d_attention2 = int(embed_dim2/n_head)
+
+                assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
+
+                self.transformer_scene = TransformerModel_scene2(n_base_words = n_inp, n_target_words = n_target_words, kind = kind, embed_dim = embed_dim,
+                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
+                                                                scene_disp = True, reordering = reordering, embed_dim2 = embed_dim2, d_attention2 = d_attention2)
+                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
+                                                                #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
+                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
+                                                                #? the instances depending on their height for example)
+
+                self.w1 = nn.Linear(self.stereo_size, self.linear_size)
+                self.w_scene_refine = nn.Linear(int(embed_dim*mul_output), self.output_size)
+
                 self.refiner = Refiner(input_size=self.output_size+1, length_sentence=length_scene_sequence, p_dropout=self.p_dropout, num_stage=n_hidden, device=self.device)
 
             else:
@@ -209,14 +250,13 @@ class SimpleModel(nn.Module):
 
                 self.transformer_scene = TransformerModel_scene2(n_base_words = n_inp, n_target_words = embed_dim*mul_output, kind = kind, embed_dim = embed_dim,
                                                                 d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
-                                                                scene_disp = True, reordering = reordering)
+                                                                scene_disp = True, reordering = False)
                                                                 #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
                                                                 #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
                                                                 #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
-                                                                #  the instances depending on their height for example)
+                                                                #?   the instances depending on their height for example)
 
                 self.w1 = nn.Linear(embed_dim*mul_output, self.linear_size) 
-
         elif self.lstm:
 
             #? To benchmark our algotrtihm, the LSTM is also implemented. This is a simple bi-directioonal LSTM working in both the scene and keypoint situation
@@ -255,7 +295,7 @@ class SimpleModel(nn.Module):
 
         #self.n_token = n_token
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
-        self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
+        # self.group_norm1 = nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # Internal loop
         for _ in range(num_stage):
@@ -282,22 +322,13 @@ class SimpleModel(nn.Module):
         mask = self.transformer.generate_square_subsequent_mask(sz)
         return mask
 
-    def get_output(self, input, output):
-        mask = torch.sum(input, dim = 2)==0
-        #output = rearrange(output, 'b n k -> (b n) k')
-        mask = rearrange(mask, 'b n -> (b n)')
-        output[mask] = 0
-        return output
-
         
     def forward(self, x, env= None):
 
-        if self.transformer or self.lstm:
+        if (self.transformer or self.lstm) and not self.scene_refine:
             if self.transformer:
-                #y = self.transformer(x, env)
-
                 if self.scene_disp:
-                    
+
                     if self.scene_refine:
                         inp = rearrange(x, 'b n d -> (b n) d')
                         y = self.transformer_kps(inp,inp, env)
@@ -306,6 +337,7 @@ class SimpleModel(nn.Module):
                 else:
                     y = self.transformer_kps(x,x, env)
             else:
+                #? LSTM 
                 y,_ = self.transformer_kps.encoder.input_enc(x)
                 y = rearrange(y, 'b n t -> n b t')
                 y, _ = self.LSTM(y)
@@ -313,7 +345,6 @@ class SimpleModel(nn.Module):
 
             y = self.w1(y)
             if True:
-                
                 aux = self.w_aux(y)
 
                 y = self.batch_norm1(y)
@@ -328,29 +359,51 @@ class SimpleModel(nn.Module):
                     y = self.refiner(y, x.size(0))
 
                 return y
+        elif self.scene_refine:
+            b_size = x.size(0)
+            x = rearrange(x, 'b n d -> (b n) d')
+            y = self.w1(x)
         else:
             y = self.w1(x)
 
-        #TODO re-enable this part of the algorithm -> this may trigger something interesting
         y = self.batch_norm1(y)
         y = self.relu(y)
-        
-        if not self.transformer:
-            y = self.dropout(y)
+        y = self.dropout(y)
 
         for i in range(self.num_stage):
             y = self.linear_stages[i](y)
 
         # Auxiliary task
+
         y = self.w2(y)
         aux = self.w_aux(y)
 
         # Final layers
-        y = self.w3(y)
-        y = self.batch_norm3(y)
-        y = self.relu(y)
-        y = self.dropout(y)
-        y = self.w_fin(y)
+        if self.scene_refine and False:
+            y = rearrange(y, ' (b n) d -> b n d', b = b_size)
+
+            #y = self.transformer_scene(y, y, env)
+
+            #? TEST
+
+            x = rearrange(x,' (b n) d -> b n d', b = b_size)
+
+            y = self.transformer_scene(x, y, env)
+
+            #y = rearrange(y,'b n d -> (b n) d')
+            y = self.w_scene_refine(y)
+        else:
+            y = self.w3(y)
+            y = self.batch_norm3(y)
+            y = self.relu(y)
+            y = self.dropout(y)
+
+            if self.scene_refine: 
+                y = rearrange(y, ' (b n) d -> b n d', b = b_size)
+                x = rearrange(x,' (b n) d -> b n d', b = b_size)
+                y = self.transformer_scene(x, y, env)
+            else:
+                y = self.w_fin(y)
 
         # Cat with auxiliary task
         y = torch.cat((y, aux), dim=1)

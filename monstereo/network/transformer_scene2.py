@@ -21,16 +21,12 @@ class PositionalEncoding(nn.Module):
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        """for index in range(pe.size(1)):
-            print(pe.size(), position.size(), div_term.size())
-            if index%2==1:
-                pe[:, index] = torch.cos(position * div_term[1])[:,0]"""
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
         if self.kind == "add":
-            print("ADDitional embedding",self.pe.size())
+            print("Additional embedding",self.pe.size())
             pe = self.pe.permute(1,0, 2).repeat(x.size(0),1, 1)
 
             print(x.size(), pe.size())
@@ -130,25 +126,31 @@ class InputEmbedding(nn.Module):
     def forward(self, x, surround = None, mask_off = False):
 
         if  x.size(-1)>10: #? In case we use a refinement of the outputs
-            assert  x.size(-1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
+            if x.size(-1)<100:
+                assert  x.size(-1)%3==0, "Wrong input, we need the flattened keypoints with the confidence"
         
         if self.scene_disp:
 
-            mask = torch.sum(out, dim = 2)!=0
-            condition = mask == False
-
-            out =self.position_emb(out)
+            #? The padded scenes are arrays of 0
+            mask = torch.sum(x, dim = 2)!=0
+            condition = (mask == False)
 
             if self.reordering:
                 out = self.reorderer(out,condition)
 
-            if x.size(-1)>10:
+            if x.size(-1)>10 and x.size(-1)<100:
+
                 out = rearrange(x, 'b x (n d) -> b x n d', d = 3)
                 if not self.confidence:
                     out= self.conf_remover(out)
                 out = rearrange(out, 'b x n d -> b x (n d)')
             else:
                 out = x
+
+            #? Add the positionnal embedding at the end of the array
+            out =self.position_emb(x)
+            if not mask_off and x.size(-1)<100:
+                out[condition] = 0
 
             return out, mask
     
@@ -158,18 +160,17 @@ class InputEmbedding(nn.Module):
             mask = self.generate_mask_keypoints(out)
             condition = (mask == False)
 
-            
-
-            out =self.position_emb(out)
-            
-            if not mask_off:
-                out[condition] = 0
 
             if self.reordering:
                 out = self.reorderer(out,condition)
 
             if not self.confidence:
                 out = self.conf_remover(out)
+
+            #? Add the positionnal embedding at the end of the array
+            out =self.position_emb(out)
+            if not mask_off:
+                out[condition] = 0
 
             return out, mask 
 
@@ -180,6 +181,7 @@ class InputEmbedding(nn.Module):
         else:
             return src[:,:,:-1]
 
+    #TODO: remove this option as well as env
     def reorderer(self,out, condition):
         
         if out.size(-1)<5:
@@ -205,17 +207,20 @@ class InputEmbedding(nn.Module):
             final = out
             for index in range(final.size(0)):
                 indices = torch.arange(0, out.size(1)).to(final.device)
-                test = self.reorganise_pp(out[index])
-                if test is not None:
-                    indices[:len(test)] = test
+                #test = self.reorganise_pp(out[index])
+                #if test is not None:
+                #    indices[:len(test)] = test
                 final[index] = out[index, indices]
         
         return final
 
+    #! As a programming practice, this was SOOOOOOO wrong. The network should only process things. 
+    #! The preordering of the inputs should happen beforehand and not during the processing
+    #! By doing this, we are actually biasing our own network
     def reorganise_pp(self, array, condition= "height", refining = False, descending = True):  
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
-        if refining:
+        """if refining:
             return None
         else:
                         
@@ -249,19 +254,13 @@ class InputEmbedding(nn.Module):
             sorted_array, indices = torch.sort(a, descending = descending)
             new_mask = ((torch.isinf(sorted_array)+torch.isnan(sorted_array)) == False).to(array.device)
                 
-            return indices[new_mask]
+            return indices[new_mask]"""
     
     def generate_mask_keypoints(self,kps):
         if len(kps.size())==3:
             mask = torch.tensor( kps[:,:,-1]>0)
         else:
             mask = torch.tensor( kps[:,-1]>0)
-        return mask
-
-    def generate_mask_scenes(self,scenes):
-        assert len(scenes.size())==3, "The scenes should be a 3 dimensionnal array with [batch, scene, array of kps]"    
-        mask = torch.sum(scenes, dim = 2)!=0
-
         return mask
 
 
@@ -272,16 +271,18 @@ class EncoderLayer(nn.Module):
                  num_heads=1):
         super().__init__()
         self.attn = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        #self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads)
         self.ffn = nn.Linear(embed_dim, embed_dim)
         self.ln1 = nn.LayerNorm(embed_dim)
         self.ln2 = nn.LayerNorm(embed_dim)
-    def forward(self, x, mask, i):
+    def forward(self, x, mask):
         attn_out = self.attn(x, x, x, mask)
-        if i == 0:
-           ln1_out = self.ln1(attn_out )
-        else: 
-            ln1_out = self.ln1(attn_out  + x)
-        ffn_out = nn.functional.gelu(self.ffn(ln1_out))
+
+        ln1_out = self.ln1(attn_out + x)
+        #attn_out = self.attn2(ln1_out, ln1_out, x, mask)
+        
+        ffn_out = nn.functional.relu(self.ffn(ln1_out))
+        #ffn_out = nn.functional.relu(self.ffn(attn_out))
         return self.ln2(ffn_out+ln1_out)
 
     
@@ -292,21 +293,17 @@ class Encoder(nn.Module):
         if d_attention is None:
             d_attention = embed_dim
         self.input_enc = InputEmbedding(n_words, embed_dim, n_token, kind = kind, 
-                                        confidence = confidence, scene_disp = scene_disp, reordering = reordering)
+                                        confidence = confidence, scene_disp = scene_disp, 
+                                        reordering = reordering)
         self.layers = nn.ModuleList([EncoderLayer(embed_dim =embed_dim, d_attention =d_attention,
                                                 num_heads = num_heads) for _ in range(n_layers)])
     def forward(self, x, surround = None,mask = None):
         
         out, mask = self.input_enc(x, surround = surround, mask_off = False)
-        self.mask = mask
+        self.mask = mask.detach()
 
         for i, layer in enumerate(self.layers):
-            if i> 0:
-                pass
-
-            if mask is not None:
-                pass
-            out = layer(out, mask , i)
+            out = layer(out, self.mask)
         return out
 
     def get_mask(self):
@@ -329,14 +326,40 @@ class DecoderLayer(nn.Module):
         attn1_out = self.attn1(x, x, x, mask)
         ln1_out = self.ln1(attn1_out + x)
         attn2_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
-       
+        #attn2_out = self.attn2(ln1_out,x,x,mask)
         ln2_out = self.ln2(attn2_out + ln1_out)
-        ffn_out = nn.functional.gelu(self.ffn(ln2_out))
+        ffn_out = nn.functional.relu(self.ffn(ln2_out))
+        return self.ln3(ffn_out + ln2_out)
+
+ 
+class DecoderLayer_refine(nn.Module):
+    def __init__(self,
+                 embed_dim=3,
+                 d_attention =3,
+                 num_heads= 1):
+        super().__init__()
+        self.attn1 = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        self.ffn = nn.Linear(embed_dim, embed_dim)
+        self.ln1 = nn.LayerNorm(embed_dim)
+        self.ln2 = nn.LayerNorm(embed_dim)
+        self.ln3 = nn.LayerNorm(embed_dim)
+    def forward(self, x, encoder_output, mask=None):
+        attn1_out = self.attn1(x, x, x, mask)
+        #ln1_out = self.ln1(attn1_out + x)
+        ln1_out = attn1_out + x
+        attn2_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
+        #attn2_out = self.attn2(ln1_out,x,x,mask)
+        ln2_out = attn2_out + ln1_out
+
+        #return ln2_out
+
+        ffn_out = self.ffn(ln2_out)
         return self.ln3(ffn_out + ln2_out)
     
 class Decoder(nn.Module):
     def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1, kind = "add", 
-                 confidence = True, scene_disp = False, reordering = False):
+                 confidence = True, scene_disp = False, reordering = False, refining = False):
         super().__init__()
 
         if d_attention is None:
@@ -345,50 +368,60 @@ class Decoder(nn.Module):
                                         confidence = confidence, scene_disp = scene_disp, reordering = reordering)
         self.layers = nn.ModuleList([DecoderLayer(embed_dim =embed_dim, d_attention =d_attention , 
                                     num_heads = num_heads)for _ in range(n_layers)])
+        if refining:
+            self.layers = nn.ModuleList([DecoderLayer_refine(embed_dim =embed_dim, d_attention =d_attention , 
+                                        num_heads = num_heads)for _ in range(n_layers)])
 
     def forward(self, x,encoder_output, surround = None, mask = None):
         
         out, mask = self.input_enc(x, surround = surround, mask_off = False)
-        self.mask = mask
+        self.mask = mask.detach()
         for i, layer in enumerate(self.layers):
-            if i>0:
-                pass
-
             out = layer(out, encoder_output,  mask)
         return out
     
     def get_mask(self):
         return self.mask
     
-    def decoder_mask(self, mask):
+    """def decoder_mask(self, mask):
         n = len(mask)
-        #print("BEGIN MASK",mask)
         look_ahead = np.tril(np.ones(n))
         return mask * look_ahead
         
     def generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-        return mask
+        return mask"""
 
 
 class Transformer(nn.Module):
     def __init__(self, n_base_words, n_target_words,  n_layers = 3, kind = "add",embed_dim=512, d_attention = None, 
-                 num_heads = 1, confidence = True, scene_disp = False, reordering = False):
+                 num_heads = 1, confidence = True, scene_disp = False, reordering = False, embed_dim2 = None, d_attention2 = None):
         super().__init__()
 
         if d_attention is not None:
             assert d_attention > 0, "d_attention is negative or equal to 0"
 
+
+        if embed_dim2 == None:
+            embed_dim2 = embed_dim
+            d_attention2 = d_attention
+        else:
+            self.w_bridge=nn.Linear(embed_dim2, embed_dim)
+
+        self.embed_dim2 = embed_dim2
+        self.embed_dim = embed_dim
+
         self.n_target_words = n_target_words
-        self.encoder = Encoder(n_base_words, n_base_words, embed_dim=embed_dim, kind = kind, num_heads = num_heads, d_attention = d_attention,
+        self.encoder = Encoder(n_base_words, n_base_words, embed_dim=embed_dim2, kind = kind, num_heads = num_heads, d_attention = d_attention2,
                                n_layers = n_layers, confidence = confidence, scene_disp = scene_disp, reordering = reordering)
 
-        self.decoder = Decoder(n_target_words, n_base_words, embed_dim=embed_dim, kind = kind, num_heads= num_heads, d_attention = d_attention,
-                               n_layers = n_layers, confidence = confidence, scene_disp = scene_disp, reordering = reordering)
+        self.decoder = Decoder(n_target_words, n_target_words, embed_dim=embed_dim, kind = kind, num_heads= num_heads, d_attention = d_attention,
+                               n_layers = n_layers, confidence = confidence, scene_disp = scene_disp, reordering = reordering, refining = (embed_dim2!= embed_dim))
+
     
-        self.encoder_2 = Encoder(n_base_words, n_base_words, embed_dim=embed_dim, kind = kind, num_heads = num_heads, d_attention = d_attention,
-                               n_layers = n_layers, confidence = confidence, scene_disp = False, reordering = reordering)
+        #self.encoder_2 = Encoder(n_base_words, n_base_words, embed_dim=embed_dim, kind = kind, num_heads = num_heads, d_attention = d_attention,
+        #                       n_layers = n_layers, confidence = confidence, scene_disp = False, reordering = reordering)
 
     
         #? Flag in case, you do not want an higher number of ouptus than the embeeding, this will not use an additionnal layer
@@ -450,8 +483,15 @@ class Transformer(nn.Module):
             #mask = self.encoder.get_mask()
         else:
             encoder_out = self.encoder(encoder_input, surround = surround, mask = encoder_mask)
+            #decoder_out = self.decoder(decoder_input, encoder_out, surround = surround, mask = decoder_mask)
+            #encoder_out, _ = self.decoder.input_enc(encoder_input, surround = surround, mask_off = True)
+
+            if self.embed_dim != self.embed_dim2:
+                encoder_out = self.w_bridge(encoder_out)
+
             decoder_out = self.decoder(decoder_input, encoder_out, surround = surround, mask = decoder_mask)
             mask = self.decoder.get_mask()
+            #mask = self.encoder.get_mask()
 
         #decoder_out = self.encoder_2(encoder_input, surround = surround, mask = encoder_mask)
         #mask = self.encoder_2.get_mask()
@@ -466,5 +506,3 @@ class Transformer(nn.Module):
                 return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
             else:
                 return rearrange(decoder_out, 'b n t -> b (n t)')
-
-    

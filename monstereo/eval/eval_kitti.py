@@ -399,8 +399,8 @@ class EvalKitti:
                 for perc in ['<0.5m', '<1m', '<2m']]
                for key in all_methods]
 
-        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:4] + ' [' +
-                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:2] + '%]'
+        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:3] + ' [' +
+                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:3] + '%]'
                 for clst in self.CLUSTERS[:4]]
                for key in all_methods]
 

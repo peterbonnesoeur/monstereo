@@ -17,16 +17,21 @@ epochs='200'
 
 hidden_size='1024' 
 
+
 joints_there='1'
 
 dropout="$3"
 
 joints_stereo='data/arrays/joints-kitti-stereo-201021-1518.json'
-joints_mono='data/arrays/joints-kitti-transformer-201214-154938.json' 
+joints_mono='data/arrays/joints-kitti-transformer-210102-150359.json'
+
 dir_ann="$2"
 
 joints_stereo_car='data/arrays/joints-kitti-vehicles-stereo-201022-1536.json'
-joints_mono_car='data/arrays/joints-kitti-vehicles-transformer-201214-151907.json' 
+
+#data/arrays/joints-apolloscape-train-201220-222458.json
+
+joints_mono_car='data/arrays/joints-kitti-vehicles-transformer-210102-151300.json' 
 
 dir_ann_car="$2"
 
@@ -36,6 +41,14 @@ dir_ann_eval="$5"
 
 args="$6"
 
+#if [$dataset == "apolloscape"]
+echo "dataset ${dataset}"
+if [ $dataset == "apolloscape" ]
+then 
+    echo "Apolloscape joints"
+    joints_mono_car='data/arrays/joints-apolloscape-train-kps_3d-210103-151042.json'
+    #joints_mono_car='data/arrays/joints-apolloscape-train-kps_3d-201221-090150.json'
+fi
 #Test apolloscape
 
 #dataset='apolloscape'
