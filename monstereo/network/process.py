@@ -391,20 +391,15 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
     
     if kps_3d:
         #! CHECK HERE
-        kps_size = 24#len(outputs[0])-9
-        #print(kps_size)
-        #raise ValueError
+        kps_size = 24
         dic_out['z_kps'] = outputs[:,-kps_size:]
         if outputs.shape[1] == 10+kps_size:
             dic_out['aux'] = outputs[:, 9:10]
 
-        #print("Output Z_KPS", dic_out['z_kps']  )
 
         if len(tasks)>1 and "z_kp0" in tasks:
             for i in range(kps_size):
                dic_out['z_kp'+str(i)] = outputs[:, -kps_size+i:]
-                #for i, z_kp in enumerate(dic_out['z_kps']):
-                #    dic_out['z_kp'+str(i)] = z_kp
         
 
     # Multi-task training
@@ -412,10 +407,6 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
     
         assert isinstance(tasks, tuple), "tasks need to be a tuple"
         return [dic_out[task] for task in tasks]
-        """except KeyError:
-            print("TASK LIST extract", tasks)
-            print("Keypoints key list", dic_out.keys())
-            print("DIC_OUT", dic_out)"""
 
     # Preprocess the tensor
     # AV_H, AV_W, AV_L, HWL_STD = 1.72, 0.75, 0.68, 0.1

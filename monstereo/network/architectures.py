@@ -69,7 +69,6 @@ class Refiner(nn.Module):
 
     def forward(self, y,batch_size):
         
-        #print("HERE",batch_size)
         env = None
         #output = rearrange(y, '(b n) d -> b n d', b = batch_size)
         #output = self.transformer_scene(output,output,env)
@@ -217,15 +216,24 @@ class SimpleModel(nn.Module):
 
                 d_attention2 = int(embed_dim2/n_head)
 
+                n_head2 = 3
+                d_attention2 = int(embed_dim2/n_head2) #embed_dim2 -3
+                n_hidden2 = self.num_stage
+
                 assert self.stereo_size%3 == 0, "The confidence needs to be in the keypoints [x, y, conf]"
 
                 self.transformer_scene = TransformerModel_scene2(n_base_words = n_inp, n_target_words = n_target_words, kind = kind, embed_dim = embed_dim,
                                                                 d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
-                                                                scene_disp = True, reordering = reordering, embed_dim2 = embed_dim2, d_attention2 = d_attention2)
+                                                                scene_disp = True, reordering = reordering, embed_dim2 = embed_dim2, d_attention2 = d_attention2, n_layers2 = n_hidden2, num_heads2 = n_head2)
                                                                 #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
                                                                 #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
                                                                 #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
                                                                 #? the instances depending on their height for example)
+
+                mul_output = 1
+                self.LSTM = torch.nn.LSTM(input_size = embed_dim, hidden_size = int(embed_dim*mul_output), num_layers = n_hidden, 
+                                    bidirectional = True, dropout = 0.1)
+                mul_output*=2
 
                 self.w1 = nn.Linear(self.stereo_size, self.linear_size)
                 self.w_scene_refine = nn.Linear(int(embed_dim*mul_output), self.output_size)
