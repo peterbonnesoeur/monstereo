@@ -331,9 +331,9 @@ class PreprocessKitti:
 
                                     for i, lab in enumerate(labels_aug):
                                         (kps, kps_r) = kps_aug[i]
-                                        kps, length_keypoints, occ_kps = self.keypoints_dropout(kps, dropout)
+                                        kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout)
                                         occluded_keypoints[phase].append(occ_kps)
-                                        kps_r, _, occ_kps = self.keypoints_dropout(kps_r, dropout)
+                                        kps_r, _, occ_kps = keypoints_dropout(kps_r, dropout)
                                         occluded_keypoints[phase].append(occ_kps)
                                         input_l = preprocess_monoloco(kps, kk, confidence = self.confidence).view(-1)
                                         input_r = preprocess_monoloco(kps_r, kk, confidence= self.confidence).view(-1)
@@ -349,8 +349,20 @@ class PreprocessKitti:
                                             self.dic_jo[phase]['kps'].append(keypoint)
                                             self.dic_jo[phase]['X'].append(inp)
                                             self.dic_jo[phase]['Y'].append(lab)
-                                            self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
-                                            append_cluster(self.dic_jo, phase, inp, lab, keypoint)
+                                            #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation                                    
+                                            if dropout!=0:
+                                                mark = "_drop_0"+str(dropout).split(".")[-1]
+                                            else:
+                                                mark =''
+
+                                            if ii>=1:
+                                                #Differenciate the flipped and regualr ouptuts
+                                                self.dic_jo[phase]['names'].append(name.split(".")[0]+"_bis"+mark+".txt")  # One image name for each annotation
+                                            else:
+                                                self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")
+
+                                           append_cluster(self.dic_jo, phase, inp, lab, keypoint)
+
                                             cnt_tot += 1
                                             if s_match > 0.9:
                                                 cnt_stereo[phase] += 1

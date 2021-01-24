@@ -24,8 +24,8 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
     Combine left and right keypoints in all-vs-all settings
     """
     clusters = []
-    inputs_l = preprocess_monoloco(keypoints, kk, confidence)
-    inputs_r = preprocess_monoloco(keypoints_r, kk, confidence)
+    inputs_l = preprocess_monoloco(keypoints, kk, confidence = confidence)
+    inputs_r = preprocess_monoloco(keypoints_r, kk, confidence = confidence)
 
     if vehicles:
         inputs = torch.empty((0, 96)).to(inputs_l.device)
@@ -37,7 +37,6 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
             inputs = torch.empty((0, 17*3*2)).to(inputs_l.device)
     for idx, inp_l in enumerate(inputs_l.split(1)):
         clst = 0
-        # inp_l = torch.cat((inp_l, cat[:, idx:idx+1]), dim=1)
         for idx_r, inp_r in enumerate(inputs_r.split(1)):
             # if D_MIN < avg_disparities[idx_r] < D_MAX:  # Check the range of disparities
             inp_r = inputs_r[idx_r, :]
@@ -47,29 +46,6 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
         clusters.append(clst)
     return inputs, clusters
 
-
-
-def preprocess_monoloco_old(keypoints, kk, zero_center=False):
-
-    """ Preprocess batches of inputs
-    keypoints = torch tensors of (m, 3, 17)  or list [3,17]
-    Outputs =  torch tensors of (m, 34) in meters normalized (z=1) and zero-centered using the center of the box
-    """
-    if isinstance(keypoints, list):
-        keypoints = torch.tensor(keypoints)
-    if isinstance(kk, list):
-        kk = torch.tensor(kk)
-    # Projection in normalized image coordinates and zero-center with the center of the bounding box
-    uv_center = get_keypoints(keypoints, mode='center')
-    xy1_center = pixel_to_camera(uv_center, kk, 10)
-    xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
-    if zero_center:
-        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
-    else:
-        kps_norm = xy1_all
-    kps_out = kps_norm[:, :, 0:2].reshape(kps_norm.size()[0], -1)  # no contiguous for view
-    # kps_out = torch.cat((kps_out, keypoints[:, 2, :]), dim=1)
-    return kps_out
 
 
 def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confidence = False):
@@ -102,23 +78,19 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
         kps_norm = xy1_all
     
     kps_out = kps_norm[:, :, 0:2]
-    #print("after removal", kps_out)
-
-    #if kps_3d:
-    #    kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
+    
 
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
         
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
-    #print("after flattening", kps_out)
 
 
 
-    return kps_out#, keypoints[:, 2, :]
+    return kps_out
 
 
-def reorganise_scenes(array, condition= "None", refining = False, descending = True):  
+def reorganise_scenes(array, condition= "xpos", refining = False, descending = True):  
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
         if refining:
@@ -163,7 +135,7 @@ def clear_keypoints(keypoints, nb_dim = 2):
     try:
         process_mode = os.environ["process_mode"]
     except:
-        return keypoints
+        process_mode = 'mean'
 
     if process_mode=='':
         return keypoints
@@ -190,8 +162,6 @@ def clear_keypoints(keypoints, nb_dim = 2):
         
             if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
                 #Generation of an array of sythetic keypoints
-
-                #print("BEFORE", keypoints[i, 0:nb_dim, :] )
                 for j in range(len(keypoints[i,nb_dim, :])):
                     #out_new = torch.normal(mean = mean, std = std).unsqueeze(0) 
                     #out_prev= torch.cat([out_prev, out_new], dim = 0)
