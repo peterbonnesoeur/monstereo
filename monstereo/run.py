@@ -62,6 +62,9 @@ def cli():
     predict_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
     predict_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     predict_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
+    predict_parser.add_argument('--scene_disp', help='Uses the scene formatting', action = 'store_true')
+
+    
     # Pifpaf
     predict_parser.add_argument('--scale', default=1.0, type=float, help='change the scale of the image to preprocess')
 
@@ -114,7 +117,9 @@ def cli():
     training_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     training_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     training_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
-    
+    training_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints (for KITTI evaluation)')
+
+
     # Evaluation
     eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
     eval_parser.add_argument('--geometric', help='to evaluate geometric distance', action='store_true')
@@ -191,7 +196,8 @@ def main():
                                    vehicles = args.vehicles, kps_3d = args.kps_3d,
                                    dataset = args.dataset, confidence = args.confidence,
                                    transformer = args.transformer, surround = args.surround,
-                                   lstm = args.lstm, scenes_disp = args.scene_disp, scene_refine = args.scene_refine)
+                                   lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine,
+                                   dir_ann = args.dir_ann)
             hyp_tuning.train()
         else:
 
