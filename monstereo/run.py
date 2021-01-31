@@ -118,6 +118,7 @@ def cli():
     training_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     training_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     training_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints (for KITTI evaluation)')
+    training_parser.add_argument('--num_heads', type=int, help='Number of heads for the multi-headed attention mechanism', default = 4)
 
 
     # Evaluation
@@ -155,6 +156,9 @@ def cli():
 
 def main():
     args = cli()
+
+    if args.transformer and args.command == 'prep':
+        args.confidence=True
     if args.command == 'predict':
         if args.activity:
             from .activity import predict
@@ -204,7 +208,7 @@ def main():
             from .train import Trainer
             training = Trainer(joints=args.joints, epochs=args.epochs, bs=args.bs,
                                monocular=args.monocular, dropout=args.dropout, lr=args.lr, sched_step=args.sched_step,
-                               n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
+                               n_stage=args.n_stage,  num_heads = args.num_heads, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
                                r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.kps_3d,
                                dataset = args.dataset, confidence = args.confidence, transformer = args.transformer,
                                surround = args.surround, lstm = args.lstm, scene_disp= args.scene_disp, scene_refine = args.scene_refine)

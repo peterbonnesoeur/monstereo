@@ -6,7 +6,11 @@ import numpy as np
 from torch.utils.data import Dataset
 from einops import rearrange, repeat
 
-from ..network.architectures import SCENE_INSTANCE_SIZE
+from collections import defaultdict
+
+
+from ..utils import get_iou_matrix
+from ..network.architectures import SCENE_INSTANCE_SIZE, SCENE_LINE
 
 class ActivityDataset(Dataset):
     """
@@ -25,7 +29,6 @@ class ActivityDataset(Dataset):
         # Define input and output for normal training and inference
         self.inputs_all = torch.tensor(dic_jo[phase]['X'])
         self.outputs_all = torch.tensor(dic_jo[phase]['Y']).view(-1, 1)
-        # self.kps_all = torch.tensor(dic_jo[phase]['kps'])
 
     def __len__(self):
         """
@@ -115,7 +118,7 @@ class KeypointsDataset(Dataset):
         names = self.names_all[idx]
         kps = self.kps_all[idx, :]
 
-        assert not (self.surround and self.scene_disp), "The surround techniuqe is not compatible with the batch sizes that akes into account the whole scene"
+        assert not (self.surround and self.scene_disp), "The surround technique is not compatible with the batch sizes that akes into account the whole scene"
 
         if self.surround:
             envs = self.envs_all[idx, :]
@@ -133,7 +136,7 @@ class KeypointsDataset(Dataset):
 
         #? Test value to indicate the end of a sequence, or in our case, the end of the sequence of instances
         #! In practice, we do not use this value since it leads to worse results
-        EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
+        #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
 
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
@@ -141,7 +144,6 @@ class KeypointsDataset(Dataset):
         
         kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
         
-        #kps_v2 = torch.zeros(self.kps_all.size())
         
         old_name = None
         name_index = 0
@@ -189,7 +191,99 @@ class KeypointsDataset(Dataset):
         self.outputs_all = output_new
         self.inputs_all = inputs_new
         self.kps_all = kps_new
+        self.names_all = np.unique(np.sort(self.names_all))
+
+        if SCENE_LINE:
+            self.line_scene_placement()
         
+
+    def line_scene_placement(self):
+            threshold = SCENE_INSTANCE_SIZE
+                    
+            inputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.inputs_all.size(-1))
+                
+            outputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.outputs_all.size(-1))
+            kps_new = torch.zeros(len(self.names_all)*threshold, threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
+            
+            names_new = []
+            
+            instance_index = 0
+            
+            for inputs, outputs, kps, names in zip(self.inputs_all, self.outputs_all, self.kps_all, self.names_all):
+                mask = torch.sum(inputs, dim = 1) != 0
+                
+                if torch.sum(mask) >1:
+        
+                    offset = 0.2
+                    kps_gen = rearrange(inputs, 'b (n d) -> b d n', d = 3)
+                    box = rearrange(torch.stack((torch.min(kps_gen[mask][:,0,:], dim = -1)[0]-offset, torch.min(kps_gen[mask][:,1,:], dim = -1)[0]*0, torch.max(kps_gen[mask][:,0,:], dim = -1)[0]+offset, torch.max(kps_gen[mask][:,1,:], dim = -1)[0]*10000)), "b n -> n b")
+                    #box = rearrange(torch.stack((torch.min(kps[mask][:,0,:], dim = -1)[0]-offset, torch.min(kps[mask][:,1,:], dim = -1)[0]-offset, torch.max(kps[mask][:,0,:], dim = -1)[0]+offset, torch.max(kps[mask][:,1,:], dim = -1)[0]+offset)), "b n -> n b")
+
+                    #box = rearrange(torch.stack((torch.min(kps[mask][:,0,:], dim = -1)[0]*0, torch.min(kps[mask][:,1,:], dim = -1)[0], torch.max(kps[mask][:,0,:], dim = -1)[0]*10000, torch.max(kps[mask][:,1,:], dim = -1)[0])), "b n -> n b")
+                    
+                
+                    pre_matches = get_iou_matrix(box, box)
+                    matches = []
+                    for i, match in enumerate(pre_matches):
+                        for j, item in enumerate(match):
+                            if item>0:
+                                matches.append((i, j))
+                
+                    dic_matches = defaultdict(list)
+                    
+                    for match in matches:
+                        if match[0] == match[1]:
+                            pass
+                        else:
+                            dic_matches[match[0]].append(match[1])
+                            dic_matches[match[1]].append(match[0])
+                            
+                    initialised = list(dic_matches.keys())
+                    for i in range(len(box)):
+                        if len(dic_matches[i]) ==0 and i not in initialised :
+                            
+                            inputs_new[instance_index, 0] = inputs[i]
+                            outputs_new[instance_index,0] = outputs[i]
+                            kps_new[instance_index, 0] = kps[i]
+                            names_new.append(names)
+                                                    
+                            instance_index+=1
+                        else:
+                            list_match = dic_matches[i]
+                            dic_matches.pop(i)
+                            test = False
+                            flag = True
+                            while flag:
+                                flag = False
+                                for item in list_match:
+                                    if len(dic_matches[item])>0:
+                                        flag = True
+                                        for match in dic_matches[item]:
+                                            list_match.append(match)
+                                        dic_matches.pop(item)
+                                        
+                            for count, match in enumerate(np.unique(list_match)):
+                                inputs_new[instance_index, count] = inputs[match]
+                                outputs_new[instance_index,count] = outputs[ match]
+                                kps_new[instance_index, count] = kps[ match]
+                                
+                                test = True
+                                
+                            if len(list_match)>0:
+                                instance_index+=1
+                                names_new.append(names)
+                else:
+                    
+                    inputs_new[instance_index] = inputs
+                    outputs_new[instance_index] = outputs
+                    kps_new[instance_index] = kps
+                    names_new.append(names)
+                    instance_index+=1
+                    
+            self.outputs_all = outputs_new[:instance_index]
+            self.inputs_all = inputs_new[:instance_index]
+            self.kps_all = kps_new[:instance_index]
+            self.names_all = names_new
     
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster

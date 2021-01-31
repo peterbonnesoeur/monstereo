@@ -25,7 +25,7 @@ from torch.optim import lr_scheduler
 from .datasets import KeypointsDataset
 from .losses import CompositeLoss, MultiTaskLoss, AutoTuneMultiTaskLoss
 from ..network import extract_outputs, extract_labels, reorganise_scenes
-from ..network.architectures import SimpleModel, Refiner
+from ..network.architectures import SimpleModel
 from ..utils import set_logger, threshold_loose, threshold_mean, threshold_strict, APOLLO_CLUSTERS
 
 
@@ -38,7 +38,7 @@ class Trainer:
     lambdas = tuple([1]*len(tasks))
 
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
-                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4, r_seed=1, n_samples=100,
+                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4,  num_heads = 3,r_seed=1, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
                  confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False,
                  scene_refine = False):
@@ -73,6 +73,7 @@ class Trainer:
         if self.dataset == 'apolloscape':
             self.clusters = APOLLO_CLUSTERS
         self.hidden_size = hidden_size
+        self.num_heads = num_heads
         self.n_stage = n_stage
         self.dir_out = dir_out
         self.n_samples = n_samples
@@ -144,12 +145,9 @@ class Trainer:
 
         if self.auto_tune_mtl:
             self.mt_loss = AutoTuneMultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
-            self.mt_loss2 = AutoTuneMultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
         else:
             self.mt_loss = MultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
-            self.mt_loss2 = MultiTaskLoss(losses_tr, losses_val, self.lambdas, self.tasks, self.kps_3d)
         self.mt_loss.to(self.device)
-        self.mt_loss2.to(self.device)
 
         if self.monocular:
             #? The vehicles have 24 keypoints which contains the following : x,y,c
@@ -258,7 +256,7 @@ class Trainer:
         print(">>> creating model")
         
         self.model = SimpleModel(input_size=input_size, output_size=output_size, linear_size=hidden_size,
-                                p_dropout=dropout, num_stage=self.n_stage, device=self.device, transformer = self.transformer, confidence = self.confidence,
+                                p_dropout=dropout, num_stage=self.n_stage, num_heads = self.num_heads, device=self.device, transformer = self.transformer, confidence = self.confidence,
                                 surround =self.surround, lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
         self.model.to(self.device)
         
@@ -267,15 +265,12 @@ class Trainer:
 
         # Optimizer and scheduler
         all_params = chain(self.model.parameters(), self.mt_loss.parameters())
-        self.optimizer = torch.optim.Adam(params=all_params, lr=lr)               
-        self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=self.sched_step, gamma=self.sched_gamma)
+        self.optimizer = torch.optim.Adam(params=all_params, lr=lr)           
 
-        if self.scene_refine:
-            self.model.refiner_flag=True#False
 
-        all_params = chain(self.model.parameters(), self.mt_loss2.parameters())
-        self.optimizer2 = torch.optim.Adam(params=all_params, lr=lr)               
-        self.scheduler2 = lr_scheduler.StepLR(self.optimizer2, step_size=self.sched_step, gamma=self.sched_gamma)
+        self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size = self.sched_step, gamma=self.sched_gamma)#self.sched_gamma)
+
+
 
     def train(self):
         since = time.time()
@@ -285,20 +280,19 @@ class Trainer:
         best_epoch = 0
         epoch_losses = defaultdict(lambda: defaultdict(list))
         dim = defaultdict(list) if self.scene_disp else None
-
+                
         for epoch in range(self.num_epochs):
+            list_loss = []
+            #self.logger.info("Learning rate for epoch {} : {}".format(epoch,self.optimizer.param_groups[0]['lr']))
             running_loss = defaultdict(lambda: defaultdict(int))
-
             # Each epoch has a training and validation phase
             for phase in ['train', 'val']:
                 if phase == 'train':
                     self.model.train()  # Set model to training mode
-                    if self.scene_refine:
-                        self.model.refiner.train()
+ 
                 else:
                     self.model.eval()  # Set model to evaluate mode
-                    if self.scene_refine:
-                        self.model.refiner.eval()
+          
 
                 for inputs, labels, _, _, envs in self.dataloaders[phase]:
                     inputs = inputs.to(self.device)
@@ -309,7 +303,6 @@ class Trainer:
 
                         #? reorganize the output in a logical order (for example the height, width confidence for each instances)
                         #? possible values = (ypos, xpos, height, width, confidence)
-
                         if True:
                             for index in range(inputs.size(0)):
                                 indices = torch.arange(0, inputs.size(1)).to(labels.device)
@@ -318,13 +311,10 @@ class Trainer:
                                 test = reorganise_scenes(inputs[index])
                                 if test is not None:
                                     indices[:len(test)] = test
-                                #print(indices)
-                                #print(inputs[index])
                                 #?reorganise the inputs depending on the chosen parameter
                                 inputs[index] = inputs[index, indices]
-                                #print(inputs[index])
-                                #?reorganise the labels (aka ground truth) depending on the chosen parameter
                                 labels[index] = labels[index, indices]
+                               
 
                         
                         
@@ -351,29 +341,12 @@ class Trainer:
 
                             loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
                             self.optimizer.zero_grad() 
+
                             loss.backward()
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
                             self.optimizer.step()
-                            self.scheduler.step()
-
-                            #! Old version, do not put true, do not use
-                            if self.scene_refine:
-                                """
-                                new_out = outputs.detach()
-                                #print(new_out.requires_grad, labels.requires_grad)
-                                new_out.requires_grad_(True)
-                                #print(new_out.requires_grad, labels.requires_grad)
-
-                                outputs = self.model.refiner(new_out, inputs.size(0))
-                                #raise ValueError
-                                loss_refine, loss_values_refine = self.mt_loss2(outputs, labels, phase=phase)
-                                self.optimizer2.zero_grad() 
-                                loss_refine.backward()
-                                torch.nn.utils.clip_grad_norm_(self.model.refiner.parameters(), 2)
-                                self.optimizer2.step()
-                                self.scheduler2.step()"""
-                                pass
-
+                            #self.scheduler.step()
+                            
 
                         else:
                             if self.surround:
@@ -384,11 +357,12 @@ class Trainer:
                                     #? Retrieve the non padded outputs -> only train the network for the relevant inputs
                                     #? despite the conditionnal formatting and the padding
                                     outputs = outputs[mask]
-                                if self.model.scene_refine:
-                                    pass
                         with torch.no_grad():
                             loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
                             self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
+
+
+            self.scheduler.step()
 
             self.cout_values(epoch, epoch_losses, running_loss, dim, scene_disp = self.scene_disp)
 
@@ -411,9 +385,7 @@ class Trainer:
             print_losses(epoch_losses, self.monocular)
 
         # load best model weights
-        self.model.load_state_dict(best_model_wts)
-        if self.scene_refine:
-            print("done here", self.model.refiner_flag )            
+        self.model.load_state_dict(best_model_wts)      
 
         return best_epoch
 
@@ -437,8 +409,6 @@ class Trainer:
 
         # Average distance on training and test set after unnormalizing
         self.model.eval()
-        if self.scene_refine:
-            self.model.refiner.eval()
 
         dic_err = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))  # initialized to zero
         self.errors = defaultdict(list)
@@ -467,7 +437,6 @@ class Trainer:
                 if self.scene_disp:
                     real_values = (torch.sum(labels, dim =2)!=0).float()
                     mask = (torch.sum(labels, dim =2)!=0)
-                    #dim.append(torch.mean(torch.sum(real_values, dim =1)))
                     if True:
                         for index in range(inputs.size(0)):
                             indices = torch.arange(0, inputs.size(1)).to(labels.device)
@@ -489,7 +458,6 @@ class Trainer:
                 if self.surround:
                     envs = envs.to(self.device)
                 
-
                 # Debug plot for input-output distributions
                 if debug:
                     debug_plots(inputs, labels)
@@ -504,12 +472,6 @@ class Trainer:
                 if self.scene_disp:
                     outputs = outputs[mask]
 
-                if self.model.scene_refine:
-                    #outputs = self.model.refiner(outputs, inputs.size(0))
-                    pass
-                
-
-                #self.compute_stats(outputs, labels, dic_err['val'], int(size_eval*np.mean(dim)), clst='all',scene_disp = self.scene_disp)
                 self.compute_stats(outputs, labels, dic_err['val'], len(labels), clst='all',scene_disp = self.scene_disp)
                 final_size+=len(labels)
 
@@ -533,10 +495,6 @@ class Trainer:
                         if self.scene_disp:
                             outputs= self.model.get_output(inputs, outputs)
 
-                    #! Old version, do not put true, do not use
-                    if self.model.scene_refine:
-                        #outputs = self.model.refiner(outputs, inputs.size(0))
-                        pass
                     self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst=clst)
                     self.cout_stats(dic_err['val'], size_eval, clst=clst)
 
@@ -549,10 +507,6 @@ class Trainer:
         if self.save and not load:
 
             #! Old version, do not put true, do not use
-            if self.scene_refine:
-                #print("REFINEMENT OF THE MODEL", self.model.refiner_flag)
-                #self.model.refiner_flag = True
-                pass
 
             torch.save(self.model.state_dict(), self.path_model)
 

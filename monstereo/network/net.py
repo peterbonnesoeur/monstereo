@@ -14,10 +14,10 @@ from einops import rearrange, repeat
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
-    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes
+    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes, reorganise_lines
 from .architectures import MonolocoModel, SimpleModel
 
-from .architectures import SCENE_INSTANCE_SIZE
+from .architectures import SCENE_INSTANCE_SIZE, SCENE_LINE
 
 class Loco:
     """Class for both MonoLoco and MonStereo"""
@@ -142,43 +142,110 @@ class Loco:
                 else:    
                     inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
 
-                #print("In forward size,",inputs.size())
-                #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = inputs.size(-1) ).to(inputs.device)
-
                 if self.surround:
                     envs = dist_angle_array(inputs)
                     outputs = self.model(inputs, envs)
                 else:
-                    if len(inputs.size())<3 and self.scene_disp:
-                        inputs = inputs.unsqueeze(0)
-                        
-                        pad_size = SCENE_INSTANCE_SIZE- inputs.size(1)
-                        #TODO first play with the a parameter and see if removing it change the result
-                        #! my guess is that we can remove such an operation`
-                        #a = torch.zeros((1, pad_size, inputs.size(-1))).to(inputs.device)
-                        #inputs=torch.cat((inputs, a), dim = 1)
+                    if not SCENE_LINE:
+                        if len(inputs.size())<3 and self.scene_disp: 
+                            inputs = inputs.unsqueeze(0)
+                            pad_size = inputs.size(1)
+                            pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
+                            inputs = torch.cat((inputs, pad), dim = 1)
+                            
+                            
+                            
 
-                        if True:
+                            #? reorganise the inputs just as it was done during the training session (no influence for instance-based algorithm)
                             indices = torch.arange(0, inputs.size(1)).to(inputs.device)
                             test = reorganise_scenes(inputs[0])
 
                             if test is not None:
                                 indices[:len(test)] = test
                             inputs = inputs[:, indices]
+                                
+                        outputs = self.model(inputs)
+                        if self.scene_disp:
+                            #?Reverse the order of the output to match the initial formating
+                            outputs = outputs[torch.sort(indices)[-1],:][:pad_size]
+
+                        #print(outputs.size())
+                    else:
+                        if len(inputs.size())<3 and self.scene_disp:
+
+                            #print(inputs.size())
+
+
+                            inputs = inputs.unsqueeze(0)
+                            #pad_size = inputs.size(1)
+                            pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
+                            #print(pad.size())
+                            inputs = torch.cat((inputs, pad), dim = 1)
+
+                            #print("inputs", inputs.size())
+                            if SCENE_LINE:
+                                inputs, indices_match = reorganise_lines(inputs)
+
+                                #print("inputs", inputs.size())
+                            else:
+                                indices_match = torch.Tensor([0])
+
+                            outputs = None
+
+                            pads = None
                             
+                            for scene in inputs:
+                                #? pick up each scene individually
 
-                    #print("INPUTS SIZE", inputs.size())
+                                inner_pad_size=sum(torch.sum(scene, dim = -1) != 0)
+                                
+                                #? Memorize the real inputs from each "scene" in an image
+                                if pads is None:
+                                    pads = (torch.sum(scene, dim = -1) != 0).unsqueeze(0)
+                                    #print(scene.size(),pads.size())
+                                else:
+                                    pads =torch.cat((pads, (torch.sum(scene, dim = -1) != 0).unsqueeze(0)), dim = 0)
+                                    #print("Pad", pads.size())
 
-                    #TODO: do the reorganisation well for the scene_disp
-                    outputs = self.model(inputs)
-                    if self.scene_disp:
-                        #outputs = outputs[:(SCENE_INSTANCE_SIZE- pad_size), :]
-                        #print("OUTPUTS")
-                        #print(outputs)
-                        if True:
-                            outputs = outputs[indices[:len(outputs)],:]
-                        #print("Now")
-                        #print(outputs, indices[:len(outputs)])
+                                #pads.append(inner_pad_size)
+                                scene= scene.unsqueeze(0)
+                                #print(scene.size())
+                                
+
+                                #print(inner_pad_size
+
+                                #print(inner_pad_size)
+                                #? Order the scene by a defined order () width, height, xpos, ypos)
+                                indices = torch.arange(0, scene.size(1)).to(inputs.device)
+                                test = reorganise_scenes(scene[0])
+                                if test is not None:
+                                    indices[:len(test)] = test
+                                scene = scene[:,indices]
+
+                                pre_outputs= self.model(scene)
+                                #print("ori", pre_outputs.size())
+                                #? re- Order the scene by a defined order () width, height, xpos, ypos)
+                                pre_outputs = pre_outputs[torch.sort(indices)[-1],:].unsqueeze(0)
+
+                                #print("next", pre_outputs.size())
+
+                                if outputs is None:
+                                    outputs = pre_outputs
+                                else:
+                                    outputs =torch.cat((outputs, pre_outputs), dim = 0)
+
+                            #print(outputs.size(), pads.size())
+                            #? Reorder the "scenes" in the image in the right order
+                            #print("OUT fin size",outputs.size(), outputs[pads][torch.sort(indices_match)[-1], :].size())
+                            outputs = outputs[pads][torch.sort(indices_match)[-1], :]
+                    #else:
+                    #    outputs = self.model(inputs)
+                            
+                    
+                    #outputs = self.model(inputs)
+                    #if self.scene_disp:
+                    #    outputs = outputs[torch.sort(indices)[-1],:]
+                    #print(outputs.size())
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:

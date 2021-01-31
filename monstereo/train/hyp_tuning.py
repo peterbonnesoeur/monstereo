@@ -67,23 +67,27 @@ class HypTuning:
         # Initialize grid of parameters
         random.seed(r_seed)
         np.random.seed(r_seed)
-        self.sched_gamma_list = [0.8, 0.9, 1, 0.8, 0.9, 1] * multiplier
+        self.sched_gamma_list = [ 0.6,0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4] * multiplier
         random.shuffle(self.sched_gamma_list)
-        self.sched_step = [10, 20, 40, 60, 80, 100] * multiplier
+        self.sched_step = [10, 20, 40, 50, 60, 80, 100, 30 , 70] * multiplier
         random.shuffle(self.sched_step)
-        self.bs_list = [64, 128, 256, 512, 512, 1024 ] * multiplier
+        self.bs_list = [64, 128, 256, 256, 512, 512, 1024, 1024,254 ] * multiplier
         random.shuffle(self.bs_list)
-        self.hidden_list = [512, 1024, 2048, 512, 1024, 2048] * multiplier
+        self.hidden_list = [512, 1024, 2048, 1024,512, 1024, 2048, 512,1024] * multiplier
         random.shuffle(self.hidden_list)
-        self.n_stage_list = [1, 2,2 , 3, 4, 4, 3 ,5] * multiplier
+        self.n_stage_list = [ 3,3 , 3, 3, 3, 3, 3 ,3, 3, 3] * multiplier
         random.shuffle(self.n_stage_list)
+
+        self.num_heads_list = [ 3,3 , 4, 4, 5, 5, 3 ,4, 2, 2] * multiplier
+        self.num_heads_list = [1]*10 * multiplier
+        random.shuffle(self.num_heads_list)
         # Learning rate
-        aa = math.log(0.0005, 10)
+        aa = math.log(0.0003, 10)
         bb = math.log(0.1, 10)
         log_lr_list = np.random.uniform(aa, bb, int(6 * multiplier)).tolist()
         self.lr_list = [10 ** xx for xx in log_lr_list]
 
-        self.logger.info("LR LIST {}".format( self.lr_list))
+        self.logger.info("LR LIST {} of length {}".format( self.lr_list, len(self.lr_list)))
         # plt.hist(self.lr_list, bins=50)
         # plt.show()
 
@@ -101,10 +105,11 @@ class HypTuning:
             sched_step = self.sched_step[idx]
             hidden_size = self.hidden_list[idx]
             n_stage = self.n_stage_list[idx]
+            num_heads = self.num_heads_list[idx]
 
             training = Trainer(joints=self.joints, epochs=self.num_epochs,
                                bs=bs, monocular=self.monocular, dropout=self.dropout, lr=lr, sched_step=sched_step,
-                               sched_gamma=sched_gamma, hidden_size=hidden_size, n_stage=n_stage,
+                               sched_gamma=sched_gamma, hidden_size=hidden_size, n_stage=n_stage, num_heads =num_heads,
                                save=False, print_loss=False, r_seed=self.r_seed, vehicles=self.vehicles, kps_3d = self.kps_3d,
                                dataset = self.dataset, confidence= self.confidence, transformer = self.transformer, 
                                surround = self.surround, lstm = self.lstm, scene_disp =self.scene_disp, scene_refine = self.scene_refine)
@@ -122,12 +127,12 @@ class HypTuning:
 
                 self.logger.info("Trainer(joints={}, epochs={},\n"
                                 "bs={}, monocular={}, dropout={}, lr={}, sched_step={},\n"
-                                "sched_gamma={}, hidden_size={}, n_stage=,\n"
+                                "sched_gamma={}, hidden_size={}, n_stage={},\n n_heads={},\n"
                                 "save=False, print_loss=False, r_seed={}, vehicles={}, kps_3d = {},\n"
                                 "dataset = {}, confidence= {}, transformer = {}, \n"
                                 "surround = {}, lstm = {}, scene_disp ={}, scene_refine = {} )\n"
                                 .format(self.joints,self.num_epochs,bs, self.monocular, self.dropout, lr, sched_step,
-                                sched_gamma, hidden_size, n_stage, self.r_seed,self.vehicles, self.kps_3d, self.dataset, self.confidence,
+                                sched_gamma, hidden_size, n_stage, num_heads, self.r_seed,self.vehicles, self.kps_3d, self.dataset, self.confidence,
                                 self.transformer, self.surround, self.lstm, self.scene_disp, self.scene_refine))
 
                 if self.monocular:
@@ -148,9 +153,6 @@ class HypTuning:
 
                 kitti_eval = EvalKitti(verbose=True, vehicles = self.vehicles, dir_ann=self.dir_ann, transformer=self.transformer, logger = self.logger)
                 kitti_eval.run()
-
-                #kitti_eval.printer(show=True, save=True)
-
 
 
             if acc_val < best_acc_val:
