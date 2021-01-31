@@ -11,18 +11,21 @@ import torch
 import numpy as np
 
 from .trainer import Trainer
+from ..eval import EvalKitti, GenerateKitti
+
+from ..utils import set_logger
 
 
 class HypTuning:
 
     def __init__(self, joints, epochs, monocular, dropout, multiplier=1, r_seed=1, vehicles=False, kps_3d = False, dataset = 'kitti', 
-                confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False, scene_refine = False):
+                confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False, scene_refine = False, dir_ann = None):
         """
         Initialize directories, load the data and parameters for the training
         """
 
         # Initialize Directories
-        self.dataset = 'kitti'
+        self.dataset = dataset
         self.vehicles = vehicles
         self.joints = joints
         self.monocular = monocular
@@ -35,10 +38,16 @@ class HypTuning:
         self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
+        self.dir_ann = dir_ann
 
         self.scene_refine = scene_refine
         if self.scene_refine:
             self.scene_disp = True
+
+        now = datetime.datetime.now()
+        now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
+        name_out = 'ms-' + now_time+'-'+"hyperparameter_study"+".txt"
+        self.logger = set_logger(os.path.join('data', 'logs', name_out))
 
         dir_out = os.path.join('data', 'models')
         dir_logs = os.path.join('data', 'logs')
@@ -51,7 +60,6 @@ class HypTuning:
         self.path_log = os.path.join(dir_logs, name_out)
         self.path_model = os.path.join(dir_out, name_out)
 
-        self.dataset = vehicles
         self.kps_3d = kps_3d 
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
@@ -63,17 +71,19 @@ class HypTuning:
         random.shuffle(self.sched_gamma_list)
         self.sched_step = [10, 20, 40, 60, 80, 100] * multiplier
         random.shuffle(self.sched_step)
-        self.bs_list = [64, 128, 256, 512, 512, 1024] * multiplier
+        self.bs_list = [64, 128, 256, 512, 512, 1024 ] * multiplier
         random.shuffle(self.bs_list)
         self.hidden_list = [512, 1024, 2048, 512, 1024, 2048] * multiplier
         random.shuffle(self.hidden_list)
-        self.n_stage_list = [3, 3, 3, 3, 3, 3] * multiplier
+        self.n_stage_list = [1, 2,2 , 3, 4, 4, 3 ,5] * multiplier
         random.shuffle(self.n_stage_list)
         # Learning rate
         aa = math.log(0.0005, 10)
-        bb = math.log(0.01, 10)
+        bb = math.log(0.1, 10)
         log_lr_list = np.random.uniform(aa, bb, int(6 * multiplier)).tolist()
         self.lr_list = [10 ** xx for xx in log_lr_list]
+
+        self.logger.info("LR LIST {}".format( self.lr_list))
         # plt.hist(self.lr_list, bins=50)
         # plt.show()
 
@@ -103,7 +113,45 @@ class HypTuning:
             dic_err, model = training.evaluate()
             acc_val = dic_err['val']['all']['mean']
             cnt += 1
-            print("Combination number: {}".format(cnt))
+            self.logger.info("Combination number: {}".format(cnt))
+            
+            if self.dataset == 'kitti':
+
+                self.logger.info("Sched_gamma {} \nSched_step {} \nHidden size : {} \nN stages {}\nLearning rate {}"
+                .format(sched_gamma, sched_step, hidden_size, n_stage, lr))
+
+                self.logger.info("Trainer(joints={}, epochs={},\n"
+                                "bs={}, monocular={}, dropout={}, lr={}, sched_step={},\n"
+                                "sched_gamma={}, hidden_size={}, n_stage=,\n"
+                                "save=False, print_loss=False, r_seed={}, vehicles={}, kps_3d = {},\n"
+                                "dataset = {}, confidence= {}, transformer = {}, \n"
+                                "surround = {}, lstm = {}, scene_disp ={}, scene_refine = {} )\n"
+                                .format(self.joints,self.num_epochs,bs, self.monocular, self.dropout, lr, sched_step,
+                                sched_gamma, hidden_size, n_stage, self.r_seed,self.vehicles, self.kps_3d, self.dataset, self.confidence,
+                                self.transformer, self.surround, self.lstm, self.scene_disp, self.scene_refine))
+
+                if self.monocular:
+                    model_stereo = "nope"
+                    model_mono = model
+                else:
+                    model_stereo = model
+                    model_mono = "nope"
+
+
+                kitti_txt = GenerateKitti(model_stereo, self.dir_ann, p_dropout=0, n_dropout=0,
+                                          hidden_size=hidden_size, vehicles = self.vehicles, model_mono = model_mono,
+                                          confidence = self.confidence, transformer = self.transformer, surround = self.surround,
+                                          lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
+
+                kitti_txt.run()
+                
+
+                kitti_eval = EvalKitti(verbose=True, vehicles = self.vehicles, dir_ann=self.dir_ann, transformer=self.transformer, logger = self.logger)
+                kitti_eval.run()
+
+                #kitti_eval.printer(show=True, save=True)
+
+
 
             if acc_val < best_acc_val:
                 dic_best['lr'] = lr
