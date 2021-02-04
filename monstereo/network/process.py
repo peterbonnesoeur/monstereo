@@ -9,8 +9,9 @@ import torch
 import random
 from einops import rearrange
 
+from collections import defaultdict
 
-from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles
+from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles, get_iou_matrix
 
 BF = 0.54 * 721
 z_min = 4
@@ -24,9 +25,8 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
     Combine left and right keypoints in all-vs-all settings
     """
     clusters = []
-    inputs_l = preprocess_monoloco(keypoints, kk, confidence)
-    inputs_r = preprocess_monoloco(keypoints_r, kk, confidence)
-
+    inputs_l = preprocess_monoloco(keypoints, kk, confidence=confidence)
+    inputs_r = preprocess_monoloco(keypoints_r, kk, confidence = confidence)
     if vehicles:
         inputs = torch.empty((0, 96)).to(inputs_l.device)
         if confidence:
@@ -49,33 +49,10 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
 
 
 
-def preprocess_monoloco_old(keypoints, kk, zero_center=False):
-
-    """ Preprocess batches of inputs
-    keypoints = torch tensors of (m, 3, 17)  or list [3,17]
-    Outputs =  torch tensors of (m, 34) in meters normalized (z=1) and zero-centered using the center of the box
-    """
-    if isinstance(keypoints, list):
-        keypoints = torch.tensor(keypoints)
-    if isinstance(kk, list):
-        kk = torch.tensor(kk)
-    # Projection in normalized image coordinates and zero-center with the center of the bounding box
-    uv_center = get_keypoints(keypoints, mode='center')
-    xy1_center = pixel_to_camera(uv_center, kk, 10)
-    xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
-    if zero_center:
-        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
-    else:
-        kps_norm = xy1_all
-    kps_out = kps_norm[:, :, 0:2].reshape(kps_norm.size()[0], -1)  # no contiguous for view
-    # kps_out = torch.cat((kps_out, keypoints[:, 2, :]), dim=1)
-    return kps_out
-
-
 def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confidence = False):
 
     """ Preprocess batches of inputs
-    keypoints = torch tensors of (m, 3, 24)/(m,4,24)  or list [3,24]/[4,24]
+    keypoints = torch tensors of (m, 3, 24)/(m,2,24)  or list [3,24]/[2,24]
     Outputs =  torch tensors of (m, 48)/(m,72) in meters normalized (z=1) and zero-centered using the center of the box
     
     or, if we have the confidences:
@@ -92,9 +69,8 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
     keypoints = clear_keypoints(keypoints, 2)
     # Projection in normalized image coordinates and zero-center with the center of the bounding box
-    
     xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
-    if zero_center:#
+    if zero_center:
         uv_center = get_keypoints(keypoints, mode='center')
         xy1_center = pixel_to_camera(uv_center, kk, 10)
         kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
@@ -102,23 +78,17 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
         kps_norm = xy1_all
     
     kps_out = kps_norm[:, :, 0:2]
-    #print("after removal", kps_out)
-
-    #if kps_3d:
-    #    kps_out = torch.cat((kps_out, keypoints[:, 2, :].unsqueeze(-1)), dim=2)
 
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
-        
+
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
-    #print("after flattening", kps_out)
 
 
+    return kps_out
 
-    return kps_out#, keypoints[:, 2, :]
 
-
-def reorganise_scenes(array, condition= "None", refining = False, descending = True):  
+def reorganise_scenes(array, condition= "width", refining = False, descending = False):  
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
         if refining:
@@ -155,15 +125,90 @@ def reorganise_scenes(array, condition= "None", refining = False, descending = T
                 
             return indices[new_mask]
 
+def reorganise_lines(inputs, offset = 0.2):  
+        #? reorgansie the inputs in the shape of different scenes representing different clusters of vehicles
+        inputs_new = torch.zeros(inputs.size(1) , inputs.size(1),inputs.size(-1)).to(inputs.device)
+        
+        instance_index = 0
+        
+        mask = (torch.sum(inputs[0], dim = 1) != 0).to(inputs.device)
+                        
+        if sum(mask) >1:
+            inputs = inputs[0]
+            kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
+            indices_matches = []
+            
+            x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+            y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+            x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+            y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                    
+            offset_x = torch.abs(x_max-x_min)*offset
+            offset_y = torch.abs(y_max-y_min)*offset
+                    
+                    
+            box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
+                    
+            pre_matches = get_iou_matrix(box, box)
+            matches = []
+            for i, match in enumerate(pre_matches):
+                for j, item in enumerate(match):
+                    if item>0:
+                        matches.append((i, j))
+        
+            dic_matches = defaultdict(list)
+            
+            for match in matches:
+                if match[0] == match[1]:
+                    pass
+                else:
+                    dic_matches[match[0]].append(match[1])
+                    dic_matches[match[1]].append(match[0])
+                    
+            initialised = list(dic_matches.keys())
+            
+            for i in range(len(box)):
+                if (len(dic_matches[i]) ==0 and i not in initialised) or False :
+                    
+                    inputs_new[instance_index, 0] = inputs[i]
+                    indices_matches.append(i)
+                    instance_index+=1
+                else:
+                    list_match = dic_matches[i]
+                    dic_matches.pop(i)
+                    flag = True
+                    while flag:
+                        flag = False
+                        for item in list_match:
+                            if len(dic_matches[item])>0:
+                                flag = True
+                                for match in dic_matches[item]:
+                                    list_match.append(match)
+                                dic_matches.pop(item)
+                                
+                    for count, match in enumerate(np.unique(list_match)):
+                        inputs_new[instance_index, count] = inputs[match]
+                        indices_matches.append(match)
+                                                
+                    if len(list_match)>0:
+                        instance_index+=1
+            #print("Out of line formatting", inputs_new.size(), instance_index)
+            return inputs_new[:instance_index], torch.Tensor(indices_matches)
+        else:
+            
+            return inputs, torch.Tensor([0])
+
 
 def clear_keypoints(keypoints, nb_dim = 2):
+    #? Clear the value of the occluded keypoints (confidence = 0) and replace them 
+    #? with pre-defined values (used in monoloco_pp and the self-attention mechanism at the scene level)
 
     #! To rewrite in the last version of the code
     
     try:
         process_mode = os.environ["process_mode"]
     except:
-        return keypoints
+        process_mode = 'mean'
 
     if process_mode=='':
         return keypoints
@@ -189,12 +234,9 @@ def clear_keypoints(keypoints, nb_dim = 2):
             std[std != std] = 0      # set Nan to 0
         
             if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-                #Generation of an array of sythetic keypoints
+                #?Generation of an array of sythetic keypoints
 
-                #print("BEFORE", keypoints[i, 0:nb_dim, :] )
                 for j in range(len(keypoints[i,nb_dim, :])):
-                    #out_new = torch.normal(mean = mean, std = std).unsqueeze(0) 
-                    #out_prev= torch.cat([out_prev, out_new], dim = 0)
                     if keypoints[i,nb_dim, j]<=0:
                         keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
 

@@ -10,7 +10,7 @@ from collections import defaultdict
 
 
 from ..utils import get_iou_matrix
-from ..network.architectures import SCENE_INSTANCE_SIZE, SCENE_LINE
+from ..network.architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE
 
 class ActivityDataset(Dataset):
     """
@@ -136,7 +136,7 @@ class KeypointsDataset(Dataset):
 
         #? Test value to indicate the end of a sequence, or in our case, the end of the sequence of instances
         #! In practice, we do not use this value since it leads to worse results
-        #EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
+        EOS = repeat(torch.tensor([-10]),'h -> h w', w = self.inputs_all.size(-1) )
 
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
@@ -214,13 +214,19 @@ class KeypointsDataset(Dataset):
                 
                 if torch.sum(mask) >1:
         
-                    offset = 0.2
-                    kps_gen = rearrange(inputs, 'b (n d) -> b d n', d = 3)
-                    box = rearrange(torch.stack((torch.min(kps_gen[mask][:,0,:], dim = -1)[0]-offset, torch.min(kps_gen[mask][:,1,:], dim = -1)[0]*0, torch.max(kps_gen[mask][:,0,:], dim = -1)[0]+offset, torch.max(kps_gen[mask][:,1,:], dim = -1)[0]*10000)), "b n -> n b")
-                    #box = rearrange(torch.stack((torch.min(kps[mask][:,0,:], dim = -1)[0]-offset, torch.min(kps[mask][:,1,:], dim = -1)[0]-offset, torch.max(kps[mask][:,0,:], dim = -1)[0]+offset, torch.max(kps[mask][:,1,:], dim = -1)[0]+offset)), "b n -> n b")
-
-                    #box = rearrange(torch.stack((torch.min(kps[mask][:,0,:], dim = -1)[0]*0, torch.min(kps[mask][:,1,:], dim = -1)[0], torch.max(kps[mask][:,0,:], dim = -1)[0]*10000, torch.max(kps[mask][:,1,:], dim = -1)[0])), "b n -> n b")
+                    kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
                     
+                    offset = BOX_INCREASE
+                    x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+                    y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+                    x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+                    y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                            
+                    offset_x = torch.abs(x_max-x_min)*offset
+                    offset_y = torch.abs(y_max-y_min)*offset
+                            
+                            
+                    box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
                 
                     pre_matches = get_iou_matrix(box, box)
                     matches = []
@@ -240,7 +246,7 @@ class KeypointsDataset(Dataset):
                             
                     initialised = list(dic_matches.keys())
                     for i in range(len(box)):
-                        if len(dic_matches[i]) ==0 and i not in initialised :
+                        if (len(dic_matches[i]) ==0 and i not in initialised ) or False:
                             
                             inputs_new[instance_index, 0] = inputs[i]
                             outputs_new[instance_index,0] = outputs[i]
@@ -251,7 +257,6 @@ class KeypointsDataset(Dataset):
                         else:
                             list_match = dic_matches[i]
                             dic_matches.pop(i)
-                            test = False
                             flag = True
                             while flag:
                                 flag = False
@@ -266,9 +271,7 @@ class KeypointsDataset(Dataset):
                                 inputs_new[instance_index, count] = inputs[match]
                                 outputs_new[instance_index,count] = outputs[ match]
                                 kps_new[instance_index, count] = kps[ match]
-                                
-                                test = True
-                                
+                                                            
                             if len(list_match)>0:
                                 instance_index+=1
                                 names_new.append(names)
