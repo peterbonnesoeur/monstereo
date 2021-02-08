@@ -125,7 +125,6 @@ class Trainer:
             torch.cuda.manual_seed(r_seed)
 
         # Remove auxiliary task if monocular
-        print("KPS_3D", self.kps_3d)
         if self.kps_3d:
             list_tasks = list(self.tasks)
             if self.monocular and self.tasks[-1] == 'aux':
@@ -280,10 +279,10 @@ class Trainer:
         best_epoch = 0
         epoch_losses = defaultdict(lambda: defaultdict(list))
         dim = defaultdict(list) if self.scene_disp else None
+        length_scene = defaultdict(list) if self.scene_disp else None
                 
         for epoch in range(self.num_epochs):
             list_loss = []
-            #self.logger.info("Learning rate for epoch {} : {}".format(epoch,self.optimizer.param_groups[0]['lr']))
             running_loss = defaultdict(lambda: defaultdict(int))
             # Each epoch has a training and validation phase
             for phase in ['train', 'val']:
@@ -303,21 +302,20 @@ class Trainer:
 
                         #? reorganize the output in a logical order (for example the height, width confidence for each instances)
                         #? possible values = (ypos, xpos, height, width, confidence)
-                        if True:
-                            for index in range(inputs.size(0)):
-                                indices = torch.arange(0, inputs.size(1)).to(labels.device)
+                    
+                        for index in range(inputs.size(0)):
+                            indices = torch.arange(0, inputs.size(1)).to(labels.device)
 
-                                #? reorganise the instances in a scene depending on their height, width, position
-                                test = reorganise_scenes(inputs[index])
-                                if test is not None:
-                                    indices[:len(test)] = test
-                                #?reorganise the inputs depending on the chosen parameter
-                                inputs[index] = inputs[index, indices]
-                                labels[index] = labels[index, indices]
+                            #? reorganise the instances in a scene depending on their height, width, position
+                            test = reorganise_scenes(inputs[index])
+                            if test is not None:
+                                if epoch == 0:
+                                    length_scene[phase].append(len(test))
+                                indices[:len(test)] = test
+                            #?reorganise the inputs depending on the chosen parameter
+                            inputs[index] = inputs[index, indices]
+                            labels[index] = labels[index, indices]
                                
-
-                        
-                        
                         labels = rearrange(labels, 'b n d -> (b n) d')
                         mask = rearrange(mask, 'b n ->  (b n)')
                         labels = labels[mask]
@@ -338,14 +336,12 @@ class Trainer:
                                     #? Retrieve the non padded outputs -> only train the network for the relevant inputs
                                     #? despite the conditionnal formatting and the padding
                                     outputs = outputs[mask]
-
                             loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
                             self.optimizer.zero_grad() 
 
                             loss.backward()
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
                             self.optimizer.step()
-                            #self.scheduler.step()
                             
 
                         else:
@@ -363,7 +359,6 @@ class Trainer:
 
 
             self.scheduler.step()
-
             self.cout_values(epoch, epoch_losses, running_loss, dim, scene_disp = self.scene_disp)
 
             # deep copy the model
@@ -380,6 +375,9 @@ class Trainer:
         self.logger.info('Best training Accuracy: {:.3f}'.format(best_training_acc))
         self.logger.info('Best validation Accuracy for {}: {:.3f}'.format(self.val_task, best_acc))
         self.logger.info('Saved weights of the model at epoch: {}'.format(best_epoch))
+        if self.scene_disp:
+            self.logger.info('Mean number of instances in a scene during training: {}'.format(np.mean(length_scene['train'])))
+            self.logger.info('Mean number of instances in a scene during validation: {}'.format(np.mean(length_scene['val'])))
 
         if self.print_loss:
             print_losses(epoch_losses, self.monocular)
@@ -435,25 +433,27 @@ class Trainer:
                 inputs = inputs.to(self.device)
 
                 if self.scene_disp:
-                    real_values = (torch.sum(labels, dim =2)!=0).float()
+                    
+                    #? Detect the padding elements
                     mask = (torch.sum(labels, dim =2)!=0)
-                    if True:
-                        for index in range(inputs.size(0)):
-                            indices = torch.arange(0, inputs.size(1)).to(labels.device)
+                    real_values = mask.float()
+                    
+                    for index in range(inputs.size(0)):
+                        indices = torch.arange(0, inputs.size(1)).to(labels.device)
 
-                            #? reorganise the instances in a scene depending on their height, width, position
-                            test = reorganise_scenes(inputs[index])
-                            if test is not None:
-                                indices[:len(test)] = test
-                            #?reorganise the inputs depending on the chosen parameter
-                            inputs[index] = inputs[index, indices]
-                            #?reorganise the labels (aka ground truth) depending on the chosen parameter
-                            labels[index] = labels[index, indices]
+                        #? reorganise the instances in a scene depending on their height, width, position
+                        test = reorganise_scenes(inputs[index])
+                        if test is not None:
+                            indices[:len(test)] = test
+                        #?reorganise the inputs depending on the chosen parameter
+                        inputs[index] = inputs[index, indices]
+                        #?reorganise the labels (aka ground truth) depending on the chosen parameter
+                        labels[index] = labels[index, indices]
                         
                     labels = rearrange(labels, 'b n d -> (b n) d')
                     mask = rearrange(mask, 'b n ->  (b n)')
+                    #? Remove the pads on the labels
                     labels = labels[mask]
-                    confidence = (torch.sum(labels, dim=-1) != 0 )
                 labels = labels.to(self.device)
                 if self.surround:
                     envs = envs.to(self.device)
@@ -464,10 +464,7 @@ class Trainer:
                     sys.exit()
 
                 # Forward pass
-                if self.surround:
-                    outputs = self.model(inputs, envs)
-                else:
-                    outputs = self.model(inputs)
+                outputs = self.model(inputs)
 
                 if self.scene_disp:
                     outputs = outputs[mask]
@@ -475,9 +472,8 @@ class Trainer:
                 self.compute_stats(outputs, labels, dic_err['val'], len(labels), clst='all',scene_disp = self.scene_disp)
                 final_size+=len(labels)
 
-            #self.cout_stats(dic_err['val'], int(size_eval*np.mean(dim)), clst='all', scene_disp = self.scene_disp)
             self.cout_stats(dic_err['val'], final_size, clst='all', scene_disp = self.scene_disp)
-            # Evaluate performances on different clusters and save statistics
+            #? Evaluate performances on different clusters and save statistics
             if not self.scene_disp:
                 for clst in self.clusters:
                     inputs, labels, size_eval, envs = dataset.get_cluster_annotations(clst)
@@ -499,14 +495,12 @@ class Trainer:
                     self.cout_stats(dic_err['val'], size_eval, clst=clst)
 
         
-        if not self.scene_disp:
+        if not self.scene_disp and self.print_loss:
             show_box_plot(self.errors, clusters = self.clusters, show = True, save = True, vehicles=self.vehicles, dataset = self.dataset)
 
 
         # Save the model and the results
         if self.save and not load:
-
-            #! Old version, do not put true, do not use
 
             torch.save(self.model.state_dict(), self.path_model)
 
@@ -523,24 +517,12 @@ class Trainer:
 
         loss, loss_values = self.mt_loss(outputs, labels, phase='val')
 
-        #! Old version, do not put true, do not use
-        if scene_disp and False:
-            mask = torch.sum(labels, dim = -1) != 0
-            #loss = loss[mask]
-            #loss_values = loss_values[mask]
-            print(mask.size(), outputs.size(), labels.size())
-            print(sum(mask))
-            #outputs = outputs[mask]
-            print(outputs.size())
-            #labels = labels[mask]
 
         rel_frac = outputs.size(0) / size_eval
         print(outputs.size(0) , size_eval)
         tasks = self.tasks[:-1] if self.tasks[-1] == 'aux' else self.tasks  # Exclude auxiliary
         if self.kps_3d:
             errs_kps = torch.mean(torch.abs(extract_outputs(outputs, kps_3d=self.kps_3d)['z_kps'] - extract_labels(labels,  kps_3d=self.kps_3d)['z_kps']), dim =0)
-            #print("SIZE ERRS KPS",errs_kps.size())
-            #print("SIZE ERRS KPS No Mean",torch.abs(extract_outputs(outputs, kps_3d=self.kps_3d)['z_kps'] - extract_labels(labels,  kps_3d=self.kps_3d)['z_kps']).size())
             for err_kps in errs_kps:
                 self.errors_kps[clst].append(err_kps)
 
@@ -557,9 +539,7 @@ class Trainer:
         # Distance 
         errs = torch.abs(extract_outputs(outputs)['d'] - extract_labels(labels)['d'])
         
-
         yaws = extract_outputs(outputs, kps_3d=self.kps_3d)['yaw'][0]
-
 
         for err,yaw in zip(errs,yaws):
             self.errors[clst].append(err)
@@ -571,12 +551,11 @@ class Trainer:
                     if yaw<(-angle*np.pi/180):
                         break
 
-        
             if yaw>0:
                 self.dic_angles[str(angle)].append(err)
             else:
                 self.dic_angles[str(-angle)].append(err)
-        print(rel_frac, size_eval, outputs.size(0))
+
         #assert rel_frac > 0.99, "Variance of errors not supported with partial evaluation"
 
         # Uncertainty
@@ -611,7 +590,6 @@ class Trainer:
             equation = torch.abs( (extract_outputs(outputs)['xyzd'][:,:3] - extract_labels(labels)['xyzd'][:,:3] )/extract_labels(labels)['xyzd'][:,:3])
             errs = torch.norm(equation , p = 2, dim = 1)[selected[:,0]]
 
-            #print(errs)
             dic_err[clst]['threshold_loose_rel']+= torch.sum((errs < threshold_loose[3])).double()/torch.sum(selected)*rel_frac
             dic_err[clst]['threshold_strict_rel']+= torch.sum( errs < threshold_strict[3]).double()/torch.sum(selected)*rel_frac
             dic_err[clst]['threshold_mean_rel'] += torch.sum( errs < threshold_mean[3]).double()/torch.sum(selected)*rel_frac

@@ -19,6 +19,8 @@ z_max = 60
 D_MIN = BF / z_max
 D_MAX = BF / z_min
 
+#! CHANGE HERE
+KPS_NUMBER_3D_KPS = 24
 
 def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidence = False):
     """
@@ -73,7 +75,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     if zero_center:
         uv_center = get_keypoints(keypoints, mode='center')
         xy1_center = pixel_to_camera(uv_center, kk, 10)
-        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
+        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, N, 3) - (m, 1, 3)
     else:
         kps_norm = xy1_all
     
@@ -125,8 +127,12 @@ def reorganise_scenes(array, condition= "width", refining = False, descending = 
                 
             return indices[new_mask]
 
-def reorganise_lines(inputs, offset = 0.2):  
-        #? reorgansie the inputs in the shape of different scenes representing different clusters of vehicles
+def reorganise_lines(inputs, offset = 0.2, unique  = False):  
+        #? Function used to fragment the scenes into several clusters. 
+        #? Those clusters correspond to the superposition of the instances in a scene.
+        #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
+        #? This also allows to create an easier to link set of data for the scene level attention mechanism.
+        #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
         inputs_new = torch.zeros(inputs.size(1) , inputs.size(1),inputs.size(-1)).to(inputs.device)
         
         instance_index = 0
@@ -148,32 +154,39 @@ def reorganise_lines(inputs, offset = 0.2):
                     
                     
             box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
-                    
+
+            #? other option to have the boxes extended indefinitely in the y axis. 
+            #? This way, as long as vehicles are"alligned" in the y axis, they will be grouped together
+            #box = rearrange(torch.stack((x_min-offset_x, torch.zeros(y_min.size()).to(y_min.device), x_max+offset_x, torch.ones(y_max.size()).to(y_min.device))), "b n -> n b")
+
             pre_matches = get_iou_matrix(box, box)
             matches = []
+            #! detect all the matches happening between our boxes (of course, a box has an intersection with itself)
             for i, match in enumerate(pre_matches):
                 for j, item in enumerate(match):
                     if item>0:
                         matches.append((i, j))
         
+            #? this defaultdict is made to register the matches between the different boxes
+            #? and perform a chain of matches
             dic_matches = defaultdict(list)
             
             for match in matches:
-                if match[0] == match[1]:
-                    pass
-                else:
+                if match[0] != match[1]:
+                    #? we don't register the matches between a box and itself
                     dic_matches[match[0]].append(match[1])
                     dic_matches[match[1]].append(match[0])
                     
             initialised = list(dic_matches.keys())
             
             for i in range(len(box)):
-                if (len(dic_matches[i]) ==0 and i not in initialised) or False :
-                    
+                if (len(dic_matches[i]) ==0 and i not in initialised) or unique :
+                    #? Only matches with itself
                     inputs_new[instance_index, 0] = inputs[i]
                     indices_matches.append(i)
                     instance_index+=1
                 else:
+                    #? chain of matches
                     list_match = dic_matches[i]
                     dic_matches.pop(i)
                     flag = True
@@ -191,11 +204,12 @@ def reorganise_lines(inputs, offset = 0.2):
                         indices_matches.append(match)
                                                 
                     if len(list_match)>0:
+                        # ? only update the name once all the matches are processed
                         instance_index+=1
-            #print("Out of line formatting", inputs_new.size(), instance_index)
+
             return inputs_new[:instance_index], torch.Tensor(indices_matches)
         else:
-            
+            #? Only one instance in the image
             return inputs, torch.Tensor([0])
 
 
@@ -219,8 +233,11 @@ def clear_keypoints(keypoints, nb_dim = 2):
         mean = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].mean(dim = 1).to(keypoints.device) 
         mean[mean != mean] = 0      # set Nan to 0
         if process_mode == 'neg':
-            mean =(torch.ones(mean.size())*-1000).to(keypoints.device) 
+            #? Set the occluded keypoints to a negative value
+            mean =(torch.ones(mean.size())*-10).to(keypoints.device) 
+
         elif process_mode == 'zero':
+            #? Set the occluded keypoints to 0
             mean =(torch.ones(mean.size())*0).to(keypoints.device) 
         
         if process_mode =='zero' or process_mode == 'mean' or process_mode == 'neg':
@@ -228,14 +245,13 @@ def clear_keypoints(keypoints, nb_dim = 2):
                 keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]<=0)] = torch.transpose(mean.repeat((keypoints[i,nb_dim, :]<=0).sum() , 1), 0, 1)
 
         if process_mode=='mean_std':
-            #? Try to generate a subset of "synthetic keypoints according to a normal distribution
+            #? Replace the occluded keypoints by a subset of "synthetic" keypoints according to a normal distribution
             
             std = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].std(dim = 1).to(keypoints.device) 
             std[std != std] = 0      # set Nan to 0
         
-            if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
+            if (keypoints[i,nb_dim, :]<=0).sum() != 0:
                 #?Generation of an array of sythetic keypoints
-
                 for j in range(len(keypoints[i,nb_dim, :])):
                     if keypoints[i,nb_dim, j]<=0:
                         keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
@@ -432,21 +448,15 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
         dic_out['aux'] = outputs[:, 9:10]
     
     if kps_3d:
-        #! CHECK HERE
-        kps_size = 24#len(outputs[0])-9
-        #print(kps_size)
-        #raise ValueError
+        
+        kps_size = KPS_NUMBER_3D_KPS
         dic_out['z_kps'] = outputs[:,-kps_size:]
         if outputs.shape[1] == 10+kps_size:
             dic_out['aux'] = outputs[:, 9:10]
 
-        #print("Output Z_KPS", dic_out['z_kps']  )
-
         if len(tasks)>1 and "z_kp0" in tasks:
             for i in range(kps_size):
                dic_out['z_kp'+str(i)] = outputs[:, -kps_size+i:]
-                #for i, z_kp in enumerate(dic_out['z_kps']):
-                #    dic_out['z_kp'+str(i)] = z_kp
         
 
     # Multi-task training
@@ -454,10 +464,6 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
     
         assert isinstance(tasks, tuple), "tasks need to be a tuple"
         return [dic_out[task] for task in tasks]
-        """except KeyError:
-            print("TASK LIST extract", tasks)
-            print("Keypoints key list", dic_out.keys())
-            print("DIC_OUT", dic_out)"""
 
     # Preprocess the tensor
     # AV_H, AV_W, AV_L, HWL_STD = 1.72, 0.75, 0.68, 0.1
@@ -506,7 +512,7 @@ def extract_labels(labels, tasks=None, kps_3d = False):
                   'ori': labels[:, 7:9], 'aux': labels[:, 10:11]}
 
     if kps_3d:
-        kps_size = 24#len(labels[0])-9
+        kps_size = 24
         
         dic_gt_out['z_kps'] = labels[:, -kps_size:]
         #print("LABELS Z_KPS", dic_gt_out['z_kps'] )

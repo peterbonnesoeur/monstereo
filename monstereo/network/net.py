@@ -17,7 +17,7 @@ from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs,
     filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes, reorganise_lines
 from .architectures import MonolocoModel, SimpleModel
 
-from .architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE
+from .architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE, SCENE_UNIQUE
 
 class Loco:
     """Class for both MonoLoco and MonStereo"""
@@ -173,8 +173,8 @@ class Loco:
                     else:
                         #? in this context, we are proceeding in two steps:
                         #! - the scene is separated into lines
-                        #! - each line is reordered by a choosen parameter (width, height, pos)
-                        #! - the model proces the input
+                        #! - each line is reordered by a chosen parameter (width, height, pos)
+                        #! - the model process the input
                         #! - the lines are reordered to their previous ordering 
                         #! - The scene is recreated by reorganising the lines   
                         if len(inputs.size())<3 and self.scene_disp:
@@ -184,7 +184,7 @@ class Loco:
                             inputs = torch.cat((inputs, pad), dim = 1)
 
                             if SCENE_LINE:
-                                inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE)
+                                inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE , unique = SCENE_UNIQUE)
                             else:
                                 indices_match = torch.Tensor([0])
 
