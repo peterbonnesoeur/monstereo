@@ -9,16 +9,20 @@ import datetime
 
 import torch
 import numpy as np
+import pandas as pd
 
 from .trainer import Trainer
 from ..eval import EvalKitti, GenerateKitti
 
 from ..utils import set_logger
 
+from collections import defaultdict
+
+
 
 class HypTuning:
 
-    def __init__(self, joints, epochs, monocular, dropout, multiplier=1, r_seed=1, vehicles=False, kps_3d = False, dataset = 'kitti', 
+    def __init__(self, joints, epochs, monocular, dropout, multiplier=1, r_seed=7, vehicles=False, kps_3d = False, dataset = 'kitti', 
                 confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False, scene_refine = False, dir_ann = None):
         """
         Initialize directories, load the data and parameters for the training
@@ -64,32 +68,56 @@ class HypTuning:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
+        self.dic_results = defaultdict(lambda: defaultdict(list))
+
         # Initialize grid of parameters
         random.seed(r_seed)
         np.random.seed(r_seed)
-        self.sched_gamma_list = [ 0.6,0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4] * multiplier
-        random.shuffle(self.sched_gamma_list)
-        self.sched_step = [10, 20, 40, 50, 60, 80, 100, 30 , 70] * multiplier
+        #self.sched_gamma = [ 0.6,0.6, 0.8, 0.8, 1.2 , 1.2, 1.4, 1.4, 1, 1] * multiplier
+        self.sched_gamma = [1] * 10* multiplier
+
+        aa = math.log(1.5, 10)
+        bb = math.log(0.1, 10)
+        log_lr_list = np.random.uniform(aa, bb, int(len(self.sched_gamma))).tolist()
+        self.sched_gamma = [10 ** xx for xx in log_lr_list]
+        random.shuffle(self.sched_gamma)
+
+        self.logger.info("Sched gamma list {} of length {}".format( self.sched_gamma, len(self.sched_gamma)))
+
+        steps = np.random.uniform(int(self.num_epochs/10), int(self.num_epochs*90/100), int(len(self.sched_gamma))).tolist()
+        self.sched_step= [int(xx) for xx in steps]
         random.shuffle(self.sched_step)
-        self.bs_list = [64, 128, 256, 256, 512, 512, 1024, 1024,254 ] * multiplier
+        
+        self.logger.info("Sched step list {} of length {}".format( self.sched_step, len(self.sched_step)))
+
+
+        self.bs_list = [128, 128,  256, 256, 256, 512, 512, 512, 1024, 1024]* multiplier
+        #self.bs_list = [128] *10* multiplier
+
         random.shuffle(self.bs_list)
-        self.hidden_list = [512, 1024, 2048, 1024,512, 1024, 2048, 512,1024] * multiplier
+
+        self.hidden_list = [512, 512, 512, 512, 512, 1024, 1024, 1024, 1024, 1024] * multiplier
+        #self.hidden_list = [512]* 10 * multiplier
         random.shuffle(self.hidden_list)
-        self.n_stage_list = [ 3,3 , 3, 3, 3, 3, 3 ,3, 3, 3] * multiplier
+
+        self.n_stage_list = [3]*10 * multiplier
         random.shuffle(self.n_stage_list)
 
-        self.num_heads_list = [ 3,3 , 4, 4, 5, 5, 3 ,4, 2, 2] * multiplier
-        self.num_heads_list = [1]*10 * multiplier
+        #self.num_heads_list = [ 3,3 , 4, 4, 4, 3, 3 ,4, 3, 3] * multiplier
+        self.num_heads_list = [4]*10 * multiplier
+
         random.shuffle(self.num_heads_list)
         # Learning rate
-        aa = math.log(0.0003, 10)
+        aa = math.log(0.0001, 10)
         bb = math.log(0.1, 10)
-        log_lr_list = np.random.uniform(aa, bb, int(6 * multiplier)).tolist()
+        log_lr_list = np.random.uniform(aa, bb, int(len(self.sched_gamma))).tolist()
         self.lr_list = [10 ** xx for xx in log_lr_list]
 
-        self.logger.info("LR LIST {} of length {}".format( self.lr_list, len(self.lr_list)))
-        # plt.hist(self.lr_list, bins=50)
-        # plt.show()
+        #self.lr_list = [0.01, 0.001, 0.0001]*int(10*multiplier/3)
+        #random.shuffle(self.lr_list)
+
+        self.logger.info("Lr list {} of length {}".format( self.lr_list, len(self.lr_list)))
+
 
     def train(self):
         """Train multiple times using log-space random search"""
@@ -101,7 +129,7 @@ class HypTuning:
         cnt = 0
         for idx, lr in enumerate(self.lr_list):
             bs = self.bs_list[idx]
-            sched_gamma = self.sched_gamma_list[idx]
+            sched_gamma = self.sched_gamma[idx]
             sched_step = self.sched_step[idx]
             hidden_size = self.hidden_list[idx]
             n_stage = self.n_stage_list[idx]
@@ -154,6 +182,14 @@ class HypTuning:
                 kitti_eval = EvalKitti(verbose=True, vehicles = self.vehicles, dir_ann=self.dir_ann, transformer=self.transformer, logger = self.logger)
                 kitti_eval.run()
 
+            
+            self.dic_results[lr]["sched_step"].append(sched_step)
+            self.dic_results[lr]["sched_gamma"].append(sched_gamma)
+            self.dic_results[lr]["bs"].append(bs)
+            self.dic_results[lr]["hidden_size"].append(hidden_size)
+            self.dic_results[lr]["acc_val"].append(dic_err['val']['all']['d'])
+
+
 
             if acc_val < best_acc_val:
                 dic_best['lr'] = lr
@@ -173,7 +209,17 @@ class HypTuning:
                 best_acc_val = acc_val
                 model_best = model
 
-        # Save model and log
+        for lr in self.dic_results.keys():
+            self.logger.info("HERE for the dataframe conversion")
+            dataframe = pd.DataFrame.from_dict(self.dic_results[lr])
+
+            type_inst = "vehicle" if self.vehicles else "human"
+            name_out = "hyperparameter_"+self.dir_ann.split("/")[-1]+"_results_"+type_inst+"_lr_"+str(lr)+".csv"
+            output_file = os.path.join('data', 'logs', name_out)
+            dataframe.to_csv(output_file)
+
+
+        # Save model and log<
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M")[2:]
         self.path_model = self.path_model + now_time + '.pkl'
