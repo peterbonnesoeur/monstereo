@@ -121,10 +121,6 @@ class PreprocessApolloscape:
 
             for ii, scene in enumerate(self.scenes):
                 
-                if ii==(-10):
-                    print("BREAK")
-                    break
-
                 cnt_scenes +=1 
                 
                 scene_id = scene.split("/")[-1].split(".")[0]
@@ -150,21 +146,22 @@ class PreprocessApolloscape:
                 if os.path.isfile(path_pif):
                     boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
                 else:
-                    print("-"*50)
-                    print("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
-                    print("-"*50)
+                    raise ValueError("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
 
-                if dropout == 0:
+                if dropout == 0: 
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
                     # We train on the extended dataset and evaluate on the original dataset
                     self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
-                    ys_list_final = []
+                
+                
 
                 if phase == 'val' and dropout > 0.0:
                     #? If we are in the validation case, we should not use the dropout parameter.
                     continue
+                
+                ys_list_final = []
 
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
@@ -186,7 +183,7 @@ class PreprocessApolloscape:
                     self.dic_jo[phase]['X'].append(list(inp))
                     self.dic_jo[phase]['Y'].append(ys)
 
-                    #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation
+                    #? Mark the different types of dropout instanciated -> Data augmentation
                     if dropout!=0:
                         mark = "_drop_0"+str(dropout).split(".")[-1]
                     else:
@@ -331,26 +328,7 @@ class PreprocessApolloscape:
             car_model_list.append(dic_car_model[index_cad])
             
         return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
-        
-        
-        """else:
-            print("HERE")
-            for index_cad, _ in dic_vertices.items() :
-                
-                boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                w, l, h = dic_boxes[index_cad][1:]
-                pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
 
-                boxes_3d_list.append([xc, yc, zc, w, l, h])
-                yaw = yaw%np.pi
-
-                ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, np.sin(yaw), np.cos(yaw), yaw])
-            
-            return boxes_gt_list, boxes_3d_list, None, ys_list"""
-            
-    
-            
 def factory(dataset, dir_apollo):
     """Define dataset type and split training and validation"""
 
