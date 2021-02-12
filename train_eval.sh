@@ -7,8 +7,8 @@
 use_car="$1"
 
 #? Launch the hyperparameter optimization (and set its multiplier)
-hyp='1'
-multipler='7'
+hyp='0'
+multipler='10'
 
 eval_mode='--save --verbose'
 
@@ -52,7 +52,7 @@ echo "Dataset:  ${dataset}"
 if [ $dataset == "apolloscape" ]
 then 
     echo "Apolloscape joints"
-    joints_mono_car='data/arrays/joints-apolloscape-train-kps_3d-210113-123305.json'
+    joints_mono_car='data/arrays/joints-apolloscape-train-transformer-210210-103321.json'
 fi
 
 if [ $dataset == "nuscenes" ]
