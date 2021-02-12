@@ -31,6 +31,8 @@ The contributions are the followings:
 
 * Implementation of a new network as backbone using self-attention mechanisms.
 
+* Implementation of a dropout on the keypoints during the preprocessing step
+
 * Added compatibility for the apolloscape dataset. Creation of a toolbox and of a preprocessing step to extract data from the dataset.
 
 * Option to estimate the 3D projection of the 2D keypoints for the vehicles on the apolloscape dataset.
@@ -41,7 +43,7 @@ The contributions are the followings:
 
 * Creation of a bash script for automated preprocessing, training and evaluation of the models.
 
-# Vehicles
+## Vehicles
 
 The vehicles are now compatible for monstereo for both the KITTI and apolloscape dataset. 
 It accept as inputs a set of 24 keypoints in the formatting imposed by openpifpaf.
@@ -52,7 +54,7 @@ To call the functions while working with vehicles, simply add ```--vehicles``` a
 
 This is true dor every regular commands that you are using monstereo with.
 
-# Self-attention usage
+## Self-attention usage
 
 Self-attention is primarly used to improve the performances when the model is faced with severely occluded instances.
 
@@ -63,7 +65,16 @@ To use the self-attention mechanism, the tag ```--transformer``` needs to be add
 
 This is true dor every regular commands that you are using monstereo with (predict, train, ...).
 
-# Apolloscape dataset
+## Dropout keypoints
+
+Randomly occlude keypoints with a probability a with a between 0 and 1. This is a data augmentation technique that will add the newly pruned keypoints dataset to the original dataset
+
+
+```python3 -m  monstereo.run prep --dir_ann [annotation folder] --monocular --vehicles --dataset kitti --dropout 0.3 --confidence --kps_3d```
+
+
+
+## Apolloscape dataset
 
 The apolloscape dataset can now be used for the train of our models. To preprocess the apolloscape dataset, input the following command: 
 
@@ -78,7 +89,7 @@ To train the apolloscape network, input the following kind of command (precise a
 
 **Warning** : the apolloscape dataset only contains vehicles annotations. Hence, the ´´´--vehicles´´´tag is mandatory each time that the apolloscape network is being used.
 
-# 3D keypoints projection
+## 3D keypoints projection
 
 With the apolloscape dataset only, the network can be trained to predict the depth component of each visible 2D keypoint predicted with monstereo.
 
@@ -86,7 +97,7 @@ To do so, add the ```--kps_3d``` tag within your command line during training, d
 
 ```python3 -m  monstereo.run prep --dir_ann data/apollo-pifpaf/annotations_loose --monocular --vehicles --dataset apolloscape --dropout 0.3 --confidence --kps_3d```
 
-# Scene disposition
+## Scene disposition
 
 To process the inputs at the "scene" level, just add the ```--scene_disp``` within the command line such as with :
 
@@ -94,8 +105,8 @@ To process the inputs at the "scene" level, just add the ```--scene_disp``` with
 
 This tag is only useful during training, evaluation and prediction time. It is not needed during the preprocessing step.
 
-# Visualization options for vehicles
-
+More options to tune the scene disposition are available at the beginning of the file :  *network/architecture.py*
+## Visualization options for vehicles
 
 For the prediction step, several new visualization are now available for the vehicle case. Those options are enabled by changing the parameter ```--output_types```.
 
@@ -115,3 +126,9 @@ An example of each visualization is given below :
 ```--output_types combined_3d```:
 
 ![combined_3d](docs/test_visu_vehicles/000025.png.combined_3d.png)
+
+## Script for preprocessing, training and evaluation
+
+A tuneable script *train_eval.sh* allows for an automation of the preprocessing, training and evaluation phase for both the apolloscape and KITTI dataset. This script needs to be used in coordination with a master script such as *train_eval_simp.sh*.
+
+All the details about the usage of  those scripts are present inside them.
