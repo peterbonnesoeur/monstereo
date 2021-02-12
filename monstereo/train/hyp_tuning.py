@@ -108,7 +108,7 @@ class HypTuning:
 
         random.shuffle(self.num_heads_list)
         # Learning rate
-        aa = math.log(0.0001, 10)
+        aa = math.log(0.00008, 10)
         bb = math.log(0.1, 10)
         log_lr_list = np.random.uniform(aa, bb, int(len(self.sched_gamma))).tolist()
         self.lr_list = [10 ** xx for xx in log_lr_list]

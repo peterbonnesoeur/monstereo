@@ -38,7 +38,7 @@ class Trainer:
     lambdas = tuple([1]*len(tasks))
 
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
-                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4,  num_heads = 3,r_seed=1, n_samples=100,
+                 sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4,  num_heads = 3,r_seed=7, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
                  confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False,
                  scene_refine = False):
@@ -342,6 +342,7 @@ class Trainer:
                             loss.backward()
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2)
                             self.optimizer.step()
+                            #self.scheduler.step()
                             
 
                         else:
@@ -357,8 +358,9 @@ class Trainer:
                             loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
                             self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
 
-
+            #self.optimizer.step()
             self.scheduler.step()
+            
             self.cout_values(epoch, epoch_losses, running_loss, dim, scene_disp = self.scene_disp)
 
             # deep copy the model
