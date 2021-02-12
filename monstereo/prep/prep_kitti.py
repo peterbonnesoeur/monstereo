@@ -353,7 +353,6 @@ class PreprocessKitti:
                                                 self.dic_jo[phase]['env'].append(surround.tolist())
                                             self.dic_jo[phase]['X'].append(inp)
                                             self.dic_jo[phase]['Y'].append(lab)
-                                            #self.dic_jo[phase]['names'].append(name)  # One image name for each annotation
 
                                             #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation                                    
                                             if dropout!=0:
@@ -367,11 +366,12 @@ class PreprocessKitti:
                                             else:
                                                 self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")
 
+
                                             if self.surround:
                                                 append_cluster_transformer(self.dic_jo, phase, inp, lab, keypoint, surround)
                                             else:
                                                 append_cluster(self.dic_jo, phase, inp, lab, keypoint)
-                                            #append_cluster(self.dic_jo, phase, inp, lab, keypoint)
+
                                             cnt_tot += 1
                                             if s_match > 0.9:
                                                 cnt_stereo[phase] += 1

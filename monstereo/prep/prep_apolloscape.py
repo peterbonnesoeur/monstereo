@@ -153,6 +153,7 @@ class PreprocessApolloscape:
                     # We train on the extended dataset and evaluate on the original dataset
                     self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
+
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
                 
                 
@@ -199,6 +200,7 @@ class PreprocessApolloscape:
                 if dropout == 0:
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
                     # We train on the extended dataset and evaluate on the original dataset
+
                     self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
 
 
@@ -304,16 +306,18 @@ class PreprocessApolloscape:
             
             
             w, l, h = dic_boxes[index_cad][1:]
-            pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-            
+            #pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
+            #? New trial
+            roll, pitch, yaw, xc, yc, zc= dic_poses[index_cad] # Center position of the car and its orientation
             boxes_3d_list.append([xc, yc, zc, w, l, h])
-            
-            yaw = yaw%np.pi*2
+            #print("THERE",roll, pitch, yaw)
+            yaw = yaw%(np.pi*2)
+            #print("NOWIN",roll, pitch, yaw)
             if yaw > np.pi:
                 yaw = yaw - 2*np.pi
             elif yaw < -np.pi:
                 yaw = yaw + np.pi*2
-            
+            #print("NOW",roll, pitch, yaw)
             sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
             
             if True :

@@ -155,7 +155,9 @@ class PositionalEncoding(nn.Module):
 
 class Attention(nn.Module):
 
+
     def __init__(self, embed_dim, d_attention,num_heads, embed_dim2 = None):
+
         super().__init__()
         self.num_heads = num_heads
 
@@ -166,6 +168,7 @@ class Attention(nn.Module):
         self.W_K = nn.Linear(embed_dim2, d_attention, bias = False)
         self.W_Q = nn.Linear(embed_dim, d_attention, bias = False)
         self.W_V = nn.Linear(embed_dim2, d_attention, bias = False)      
+
         self.scaling = torch.Tensor(np.array(1 / np.sqrt(d_attention)))
 
     def weight_value(self, Q_vec, K_vec, V_vec, mask):
@@ -261,6 +264,7 @@ class EncoderLayer(nn.Module):
 
     def forward(self, x, mask):
 
+
         attn_out = self.attn(x, x, x, mask)
 
         ln1_out = self.ln1(attn_out + x)
@@ -297,6 +301,7 @@ class EncoderLayer_refine(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1, kind = "add", 
                  confidence = True, scene_disp = False, reordering = False, refining = False, embed_dim2 = None):
+
         super().__init__()
 
         if d_attention is None:
@@ -310,6 +315,7 @@ class Decoder(nn.Module):
                                         num_heads = num_heads, embed_dim2 = embed_dim2)for _ in range(n_layers)])
 
     def forward(self, x,encoder_output, surround = None, mask = None):
+
         
         if mask is not None:
            out, _ = self.input_enc(x, surround = surround, mask_off = False)
@@ -336,10 +342,11 @@ class DecoderLayer(nn.Module):
         self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads)
         self.ffn = nn.Linear(embed_dim, embed_dim)
 
+
         self.ln1 = nn.LayerNorm([n_words,embed_dim])
         self.ln2 = nn.LayerNorm([n_words,embed_dim])
         self.ln3 = nn.LayerNorm([n_words,embed_dim])
-    
+
     def forward(self, x, encoder_output, mask=None):
         
 
@@ -347,7 +354,7 @@ class DecoderLayer(nn.Module):
         ln1_out = self.ln1(attn1_out + x)
 
         attn2_out = self.attn2(ln1_out,ln1_out,ln1_out,mask)
-        
+
         ln2_out = self.ln2(attn2_out + ln1_out)
 
         ffn_out = nn.functional.relu(self.ffn(ln2_out))
@@ -355,14 +362,15 @@ class DecoderLayer(nn.Module):
         return self.ln3(ffn_out + ln2_out)
 
 
-
 class DecoderLayer_refine(nn.Module):
 
     #! Experimental, not used
     def __init__(self,
                  embed_dim=3,
+
                  d_attention = 3,
                  n_words = 20,
+
                  num_heads= 1,
                  embed_dim2 = None):
         super().__init__()
@@ -394,6 +402,7 @@ class Transformer(nn.Module):
     #! Adapting the recall for the evaluation is also a necessity
     def __init__(self, n_base_dim, n_target_dim, n_words, n_layers = 3, kind = "add",embed_dim=512, d_attention = None, 
                  num_heads = 1, confidence = True, scene_disp = False, reordering = False, embed_dim2 = None, d_attention2 = None, n_layers2 = None, num_heads2 = None):
+
         super().__init__()
 
         if d_attention is not None:
@@ -415,6 +424,7 @@ class Transformer(nn.Module):
         self.n_target_dim = n_target_dim
         self.encoder = Encoder(n_words, n_base_dim, embed_dim=embed_dim2, kind = kind, num_heads = num_heads2, d_attention = d_attention2,
                                n_layers = n_layers2, confidence = confidence, scene_disp = scene_disp, reordering = reordering, refining = (embed_dim2!= embed_dim))
+
 
         self.decoder = Decoder(n_words, n_target_dim, embed_dim=embed_dim, kind = kind, num_heads= num_heads, d_attention = d_attention,
                                n_layers = n_layers, confidence = confidence, scene_disp = scene_disp, reordering = reordering, refining = (embed_dim2!= embed_dim), embed_dim2= embed_dim2)
@@ -444,6 +454,7 @@ class Transformer(nn.Module):
         decoder_out = self.decoder(decoder_input, encoder_out, surround = surround, mask = decoder_mask)
         mask = self.decoder.get_mask()
 
+
         if self.scene_disp:    
             if self.end_layer:
                 return rearrange(self.linear(decoder_out), 'b n t -> (b n) t')
@@ -454,3 +465,21 @@ class Transformer(nn.Module):
                 return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
             else:
                 return rearrange(decoder_out, 'b n t -> b (n t)')
+
+
+class PositionwiseFeedForward(nn.Module):
+
+    def __init__(self, d_hid, d_inner_hid, dropout=0.1):
+
+        super().__init__()
+        self.w_1 = nn.Linear(d_hid, d_inner_hid)
+        self.w_2 = nn.Linear(d_inner_hid ,d_hid)
+        self.layer_norm = nn.LayerNorm(d_hid)
+        self.dropout = nn.Dropout(dropout)
+    def forward(self, x):
+        output = self.w_1(x)
+        output = nn.functional.relu(output)
+        output = self.w_2(output)
+        output = self.dropout(output)
+        output = output + x
+        return self.layer_norm(output)

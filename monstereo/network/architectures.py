@@ -199,6 +199,7 @@ class SimpleModel(nn.Module):
                                                                 d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = False, 
                                                                 scene_disp = True, embed_dim2 = embed_dim2, d_attention2 = d_attention2, n_layers2 = n_hidden2, num_heads2 = n_head2)
 
+
                 self.w_scene_refine = nn.Linear(n_target_dim, self.output_size)
                 self.w_fin_refine = nn.Linear(self.output_size, self.output_size)
 

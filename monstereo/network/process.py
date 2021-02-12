@@ -29,6 +29,7 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
     clusters = []
     inputs_l = preprocess_monoloco(keypoints, kk, confidence=confidence)
     inputs_r = preprocess_monoloco(keypoints_r, kk, confidence = confidence)
+
     if vehicles:
         inputs = torch.empty((0, 96)).to(inputs_l.device)
         if confidence:
@@ -39,7 +40,6 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
             inputs = torch.empty((0, 17*3*2)).to(inputs_l.device)
     for idx, inp_l in enumerate(inputs_l.split(1)):
         clst = 0
-        # inp_l = torch.cat((inp_l, cat[:, idx:idx+1]), dim=1)
         for idx_r, inp_r in enumerate(inputs_r.split(1)):
             # if D_MIN < avg_disparities[idx_r] < D_MAX:  # Check the range of disparities
             inp_r = inputs_r[idx_r, :]
@@ -84,6 +84,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
 
+
     kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
 
 
@@ -91,6 +92,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
 
 def reorganise_scenes(array, condition= "ypos", refining = False, descending = False):  
+
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
         if refining:
@@ -252,6 +254,7 @@ def clear_keypoints(keypoints, nb_dim = 2):
         
             if (keypoints[i,nb_dim, :]<=0).sum() != 0:
                 #?Generation of an array of sythetic keypoints
+
                 for j in range(len(keypoints[i,nb_dim, :])):
                     if keypoints[i,nb_dim, j]<=0:
                         keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
@@ -450,6 +453,7 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
     if kps_3d:
         
         kps_size = KPS_NUMBER_3D_KPS
+
         dic_out['z_kps'] = outputs[:,-kps_size:]
         if outputs.shape[1] == 10+kps_size:
             dic_out['aux'] = outputs[:, 9:10]

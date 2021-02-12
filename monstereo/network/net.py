@@ -157,6 +157,7 @@ class Loco:
                             pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
                             inputs = torch.cat((inputs, pad), dim = 1)
                             
+
                             #? reorganise the inputs just as it was done during the training session (no influence for instance-based algorithm)
                             indices = torch.arange(0, inputs.size(1)).to(inputs.device)
                             test = reorganise_scenes(inputs[0])
@@ -222,6 +223,7 @@ class Loco:
                             outputs = outputs[pads][torch.sort(indices_match)[-1], :]
                         else:
                             outputs = self.model(inputs)
+
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
             else:
@@ -309,13 +311,16 @@ class Loco:
         if dic_gt:
             boxes_gt = dic_gt['boxes']
             dds_gt = [el[3] for el in dic_gt['ys']]
+            angles_gt = [el[7] for el in dic_gt['ys']]
+            angles_egocentric_gt = [el[8] for el in dic_gt['ys']]
             matches = get_iou_matches(boxes, boxes_gt, iou_min=iou_min)
             dic_out['gt'] = [True]
             try:
-                car_model = dic_out['car_model']
+                car_model = dic_gt['car_model']
             except KeyError:
                 pass
         
+            print(dic_gt['car_model'])
             if verbose:
                 print("found {} matches with ground-truth".format(len(matches)))
 
@@ -376,15 +381,11 @@ class Loco:
             # For MonStereo / MonoLoco++
             try:
                 dic_out['angles'].append(float(dic_in['yaw'][0][idx]))  # Predicted angle
-                dic_out['angles_egocentric'].append(float(dic_in['yaw'][1][idx]))  # Egocentric angle
+                dic_out['angles_egocentric'].append(float(dic_in['yaw'][1][idx]))
             except KeyError:
                 continue
             
-            try:
-                if len(car_model) !=0:
-                    dic_out['car_model'] = car_model[idx]   #Only for apolloscape
-            except :
-                continue
+            
 
             # Only for MonStereo
             try:
@@ -398,6 +399,13 @@ class Loco:
             dic_out['dds_real'].append(dd_real)
             dic_out['boxes_gt'].append(boxes_gt[idx_gt])
             dic_out['xyz_real'].append(xyz_real.squeeze().tolist())
+            dic_out['angles_gt'].append(angles_gt[idx_gt])  # Predicted angle
+            dic_out['angles_egocentric_gt'].append(angles_egocentric_gt[idx_gt])  # Egocentric angle
+            try:
+                if len(car_model) !=0:
+                    dic_out['car_model'].append(car_model[idx_gt])   #Only for apolloscape
+            except :
+                continue
         return dic_out
 
 
