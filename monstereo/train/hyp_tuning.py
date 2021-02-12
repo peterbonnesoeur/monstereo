@@ -73,7 +73,6 @@ class HypTuning:
         # Initialize grid of parameters
         random.seed(r_seed)
         np.random.seed(r_seed)
-        #self.sched_gamma = [ 0.6,0.6, 0.8, 0.8, 1.2 , 1.2, 1.4, 1.4, 1, 1] * multiplier
         self.sched_gamma = [1] * 10* multiplier
 
         aa = math.log(1.5, 10)
@@ -92,18 +91,15 @@ class HypTuning:
 
 
         self.bs_list = [128, 128,  256, 256, 256, 512, 512, 512, 1024, 1024]* multiplier
-        #self.bs_list = [128] *10* multiplier
 
         random.shuffle(self.bs_list)
 
         self.hidden_list = [512, 512, 512, 512, 512, 1024, 1024, 1024, 1024, 1024] * multiplier
-        #self.hidden_list = [512]* 10 * multiplier
         random.shuffle(self.hidden_list)
 
         self.n_stage_list = [3]*10 * multiplier
         random.shuffle(self.n_stage_list)
 
-        #self.num_heads_list = [ 3,3 , 4, 4, 4, 3, 3 ,4, 3, 3] * multiplier
         self.num_heads_list = [4]*10 * multiplier
 
         random.shuffle(self.num_heads_list)
@@ -113,8 +109,7 @@ class HypTuning:
         log_lr_list = np.random.uniform(aa, bb, int(len(self.sched_gamma))).tolist()
         self.lr_list = [10 ** xx for xx in log_lr_list]
 
-        #self.lr_list = [0.01, 0.001, 0.0001]*int(10*multiplier/3)
-        #random.shuffle(self.lr_list)
+
 
         self.logger.info("Lr list {} of length {}".format( self.lr_list, len(self.lr_list)))
 
