@@ -25,9 +25,9 @@ NUM_ANNOTATIONS = 7481
 
 class GenerateKitti:
 
-    METHODS = ['monstereo', 'monoloco_pp', 'monoloco', 'geometric']
+    #METHODS = ['monstereo', 'monoloco_pp', 'monoloco', 'geometric']
     METHODS = ['monoloco_pp']
-
+    #METHODS = ['monstereo']
 
     def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, 
                 model_mono = None, confidence = False, transformer = False, surround = False, lstm = False, 
@@ -267,7 +267,6 @@ def save_txts(path_txt, all_inputs, all_outputs, all_params, mode='monoloco', ca
             # Set the scale to obtain (approximately) same recall at evaluation¨
             #!bookmark
             n = 3
-            #n =1.7
             if mode == 'monstereo':
                 conf_scale = n*0.03
                 if vehicles:
