@@ -53,9 +53,6 @@ class MultiTaskLoss(torch.nn.Module):
             lambda_kps = lambdas[-1]
             self.lambdas = self.lambdas[:-1] + [lambda_kps]*24
 
-        #print("TASKS multi task", self.tasks)
-        #print("Lambdas multi task", self.lambdas)
-
         if len(self.tasks) == 1 and self.tasks[0] == 'aux':
             self.flag_aux = True
         else:
@@ -69,12 +66,20 @@ class MultiTaskLoss(torch.nn.Module):
             gt_out = extract_labels_aux(labels, tasks=self.tasks)
         else:
             gt_out = extract_labels(labels, tasks=self.tasks, kps_3d= self.kps_3d)
-        loss_values = [lam * l(o, g) for lam, l, o, g in zip(self.lambdas, self.losses, out, gt_out)]
+        loss_values = []
+        for lam, l, o, g in zip(self.lambdas, self.losses, out, gt_out):
+            if len(o.size())==1:
+                g = g.squeeze(-1)
+            loss_values.append(lam * l(o, g))
         loss = sum(loss_values)
 
         #print("HERE LOSS", loss, self.losses, loss_values, out, gt_out)
         if phase == 'val':
-            loss_values_val = [l(o, g) for l, o, g in zip(self.losses_val, out, gt_out)]
+            loss_values_val = []
+            for  l, o, g in zip(self.losses, out, gt_out):
+                if len(o.size())==1:
+                    g = g.squeeze(-1)
+                loss_values_val.append(l(o, g))
             return loss, loss_values_val
         return loss, loss_values
 
@@ -87,7 +92,6 @@ class CompositeLoss(torch.nn.Module):
         self.kps_3d = kps_3d
         if self.kps_3d:
             self.tasks = tuple(list(self.tasks[:-1])+['z_kp'+str(i) for i in range (24)])
-        #print("Tasks", tasks)
         self.multi_loss_tr = {task: (LaplacianLoss() if task == 'd'
                                      else (nn.BCEWithLogitsLoss() if task in ('aux', )
                                         else nn.L1Loss()if "z_kp" in task 

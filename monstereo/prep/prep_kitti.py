@@ -343,12 +343,17 @@ class PreprocessKitti:
                                         # Only relative distances
                                         # inp_x = input[::2]
                                         # inp = torch.cat((inp_x, input - input_r)).tolist()
+                                        if self.surround:
+                                            surround = surrounds[idx]
 
-                                        lab = normalize_hwl(lab)
+                                        #lab = normalize_hwl(lab)
                                         if ys[idx_gt][10] < 0.5:
                                             self.dic_jo[phase]['kps'].append(keypoint)
+                                            if self.surround:
+                                                self.dic_jo[phase]['env'].append(surround.tolist())
                                             self.dic_jo[phase]['X'].append(inp)
                                             self.dic_jo[phase]['Y'].append(lab)
+
                                             #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation                                    
                                             if dropout!=0:
                                                 mark = "_drop_0"+str(dropout).split(".")[-1]
@@ -361,7 +366,11 @@ class PreprocessKitti:
                                             else:
                                                 self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")
 
-                                           append_cluster(self.dic_jo, phase, inp, lab, keypoint)
+
+                                            if self.surround:
+                                                append_cluster_transformer(self.dic_jo, phase, inp, lab, keypoint, surround)
+                                            else:
+                                                append_cluster(self.dic_jo, phase, inp, lab, keypoint)
 
                                             cnt_tot += 1
                                             if s_match > 0.9:

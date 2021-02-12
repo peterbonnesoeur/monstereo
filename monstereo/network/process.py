@@ -9,8 +9,9 @@ import torch
 import random
 from einops import rearrange
 
+from collections import defaultdict
 
-from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles
+from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles, get_iou_matrix
 
 BF = 0.54 * 721
 z_min = 4
@@ -18,13 +19,15 @@ z_max = 60
 D_MIN = BF / z_max
 D_MAX = BF / z_min
 
+#! CHANGE HERE
+KPS_NUMBER_3D_KPS = 24
 
 def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidence = False):
     """
     Combine left and right keypoints in all-vs-all settings
     """
     clusters = []
-    inputs_l = preprocess_monoloco(keypoints, kk, confidence = confidence)
+    inputs_l = preprocess_monoloco(keypoints, kk, confidence=confidence)
     inputs_r = preprocess_monoloco(keypoints_r, kk, confidence = confidence)
 
     if vehicles:
@@ -51,7 +54,7 @@ def preprocess_monstereo(keypoints, keypoints_r, kk, vehicles = False, confidenc
 def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confidence = False):
 
     """ Preprocess batches of inputs
-    keypoints = torch tensors of (m, 3, 24)/(m,4,24)  or list [3,24]/[4,24]
+    keypoints = torch tensors of (m, 3, 24)/(m,2,24)  or list [3,24]/[2,24]
     Outputs =  torch tensors of (m, 48)/(m,72) in meters normalized (z=1) and zero-centered using the center of the box
     
     or, if we have the confidences:
@@ -68,29 +71,28 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
     keypoints = clear_keypoints(keypoints, 2)
     # Projection in normalized image coordinates and zero-center with the center of the bounding box
-    
     xy1_all = pixel_to_camera(keypoints[:, 0:2, :], kk, 10)
-    if zero_center:#
+    if zero_center:
         uv_center = get_keypoints(keypoints, mode='center')
         xy1_center = pixel_to_camera(uv_center, kk, 10)
-        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, 17, 3) - (m, 1, 3)
+        kps_norm = xy1_all - xy1_center.unsqueeze(1)  # (m, N, 3) - (m, 1, 3)
     else:
         kps_norm = xy1_all
     
     kps_out = kps_norm[:, :, 0:2]
-    
 
     if confidence:
         kps_out = torch.cat((kps_out, keypoints[:, -1, :].unsqueeze(-1)), dim=2)
-        
-    kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
 
+
+    kps_out = kps_out.reshape(kps_norm.size()[0], -1)  # no contiguous for view
 
 
     return kps_out
 
 
-def reorganise_scenes(array, condition= "xpos", refining = False, descending = True):  
+def reorganise_scenes(array, condition= "ypos", refining = False, descending = False):  
+
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
         if refining:
@@ -127,8 +129,95 @@ def reorganise_scenes(array, condition= "xpos", refining = False, descending = T
                 
             return indices[new_mask]
 
+def reorganise_lines(inputs, offset = 0.2, unique  = False):  
+        #? Function used to fragment the scenes into several clusters. 
+        #? Those clusters correspond to the superposition of the instances in a scene.
+        #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
+        #? This also allows to create an easier to link set of data for the scene level attention mechanism.
+        #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
+        inputs_new = torch.zeros(inputs.size(1) , inputs.size(1),inputs.size(-1)).to(inputs.device)
+        
+        instance_index = 0
+        
+        mask = (torch.sum(inputs[0], dim = 1) != 0).to(inputs.device)
+                        
+        if sum(mask) >1:
+            inputs = inputs[0]
+            kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
+            indices_matches = []
+            
+            x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+            y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+            x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+            y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                    
+            offset_x = torch.abs(x_max-x_min)*offset
+            offset_y = torch.abs(y_max-y_min)*offset
+                    
+                    
+            box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
+
+            #? other option to have the boxes extended indefinitely in the y axis. 
+            #? This way, as long as vehicles are"alligned" in the y axis, they will be grouped together
+            #box = rearrange(torch.stack((x_min-offset_x, torch.zeros(y_min.size()).to(y_min.device), x_max+offset_x, torch.ones(y_max.size()).to(y_min.device))), "b n -> n b")
+
+            pre_matches = get_iou_matrix(box, box)
+            matches = []
+            #! detect all the matches happening between our boxes (of course, a box has an intersection with itself)
+            for i, match in enumerate(pre_matches):
+                for j, item in enumerate(match):
+                    if item>0:
+                        matches.append((i, j))
+        
+            #? this defaultdict is made to register the matches between the different boxes
+            #? and perform a chain of matches
+            dic_matches = defaultdict(list)
+            
+            for match in matches:
+                if match[0] != match[1]:
+                    #? we don't register the matches between a box and itself
+                    dic_matches[match[0]].append(match[1])
+                    dic_matches[match[1]].append(match[0])
+                    
+            initialised = list(dic_matches.keys())
+            
+            for i in range(len(box)):
+                if (len(dic_matches[i]) ==0 and i not in initialised) or unique :
+                    #? Only matches with itself
+                    inputs_new[instance_index, 0] = inputs[i]
+                    indices_matches.append(i)
+                    instance_index+=1
+                else:
+                    #? chain of matches
+                    list_match = dic_matches[i]
+                    dic_matches.pop(i)
+                    flag = True
+                    while flag:
+                        flag = False
+                        for item in list_match:
+                            if len(dic_matches[item])>0:
+                                flag = True
+                                for match in dic_matches[item]:
+                                    list_match.append(match)
+                                dic_matches.pop(item)
+                                
+                    for count, match in enumerate(np.unique(list_match)):
+                        inputs_new[instance_index, count] = inputs[match]
+                        indices_matches.append(match)
+                                                
+                    if len(list_match)>0:
+                        # ? only update the name once all the matches are processed
+                        instance_index+=1
+
+            return inputs_new[:instance_index], torch.Tensor(indices_matches)
+        else:
+            #? Only one instance in the image
+            return inputs, torch.Tensor([0])
+
 
 def clear_keypoints(keypoints, nb_dim = 2):
+    #? Clear the value of the occluded keypoints (confidence = 0) and replace them 
+    #? with pre-defined values (used in monoloco_pp and the self-attention mechanism at the scene level)
 
     #! To rewrite in the last version of the code
     
@@ -146,8 +235,11 @@ def clear_keypoints(keypoints, nb_dim = 2):
         mean = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].mean(dim = 1).to(keypoints.device) 
         mean[mean != mean] = 0      # set Nan to 0
         if process_mode == 'neg':
-            mean =(torch.ones(mean.size())*-1000).to(keypoints.device) 
+            #? Set the occluded keypoints to a negative value
+            mean =(torch.ones(mean.size())*-10).to(keypoints.device) 
+
         elif process_mode == 'zero':
+            #? Set the occluded keypoints to 0
             mean =(torch.ones(mean.size())*0).to(keypoints.device) 
         
         if process_mode =='zero' or process_mode == 'mean' or process_mode == 'neg':
@@ -155,16 +247,15 @@ def clear_keypoints(keypoints, nb_dim = 2):
                 keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]<=0)] = torch.transpose(mean.repeat((keypoints[i,nb_dim, :]<=0).sum() , 1), 0, 1)
 
         if process_mode=='mean_std':
-            #? Try to generate a subset of "synthetic keypoints according to a normal distribution
+            #? Replace the occluded keypoints by a subset of "synthetic" keypoints according to a normal distribution
             
             std = keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]>0) ].std(dim = 1).to(keypoints.device) 
             std[std != std] = 0      # set Nan to 0
         
-            if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
-                #Generation of an array of sythetic keypoints
+            if (keypoints[i,nb_dim, :]<=0).sum() != 0:
+                #?Generation of an array of sythetic keypoints
+
                 for j in range(len(keypoints[i,nb_dim, :])):
-                    #out_new = torch.normal(mean = mean, std = std).unsqueeze(0) 
-                    #out_prev= torch.cat([out_prev, out_new], dim = 0)
                     if keypoints[i,nb_dim, j]<=0:
                         keypoints[i, 0:nb_dim, j] = torch.normal(mean = mean, std = std/2)
 
@@ -360,12 +451,12 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
         dic_out['aux'] = outputs[:, 9:10]
     
     if kps_3d:
-        #! CHECK HERE
-        kps_size = 24
+        
+        kps_size = KPS_NUMBER_3D_KPS
+
         dic_out['z_kps'] = outputs[:,-kps_size:]
         if outputs.shape[1] == 10+kps_size:
             dic_out['aux'] = outputs[:, 9:10]
-
 
         if len(tasks)>1 and "z_kp0" in tasks:
             for i in range(kps_size):
@@ -425,7 +516,7 @@ def extract_labels(labels, tasks=None, kps_3d = False):
                   'ori': labels[:, 7:9], 'aux': labels[:, 10:11]}
 
     if kps_3d:
-        kps_size = 24#len(labels[0])-9
+        kps_size = 24
         
         dic_gt_out['z_kps'] = labels[:, -kps_size:]
         #print("LABELS Z_KPS", dic_gt_out['z_kps'] )

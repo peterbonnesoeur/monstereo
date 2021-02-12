@@ -6,7 +6,11 @@ import numpy as np
 from torch.utils.data import Dataset
 from einops import rearrange, repeat
 
-from ..network.architectures import SCENE_INSTANCE_SIZE
+from collections import defaultdict
+
+
+from ..utils import get_iou_matrix
+from ..network.architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE, SCENE_UNIQUE
 
 class ActivityDataset(Dataset):
     """
@@ -25,7 +29,6 @@ class ActivityDataset(Dataset):
         # Define input and output for normal training and inference
         self.inputs_all = torch.tensor(dic_jo[phase]['X'])
         self.outputs_all = torch.tensor(dic_jo[phase]['Y']).view(-1, 1)
-        # self.kps_all = torch.tensor(dic_jo[phase]['kps'])
 
     def __len__(self):
         """
@@ -40,7 +43,6 @@ class ActivityDataset(Dataset):
         """
         inputs = self.inputs_all[idx, :]
         outputs = self.outputs_all[idx]
-        # kps = self.kps_all[idx, :]
         return inputs, outputs
 
 
@@ -75,7 +77,7 @@ class KeypointsDataset(Dataset):
         glob_list = []
 
         #? A different formatting was used for the kps_3D formatting
-        # This step is just there to unfold the array befor being converted into a proper tensor
+        # This step is just there to unfold the array before being converted into a proper tensor
         if type(dic_jo[phase]['Y']) is list:
             for car_object in dic_jo[phase]['Y']:
 
@@ -93,6 +95,9 @@ class KeypointsDataset(Dataset):
         self.outputs_all = torch.tensor(dic_jo[phase]['Y'] )
         self.names_all = dic_jo[phase]['names']
         self.kps_all = torch.tensor(dic_jo[phase]['kps'])
+
+        tensor = torch.mean(self.inputs_all, dim = 0).unsqueeze(0)
+        torch.save(tensor, 'docs/tensor.pt')
 
         if self.scene_disp:
             self.scene_disposition_dataset()
@@ -115,7 +120,7 @@ class KeypointsDataset(Dataset):
         names = self.names_all[idx]
         kps = self.kps_all[idx, :]
 
-        assert not (self.surround and self.scene_disp), "The surround techniuqe is not compatible with the batch sizes that akes into account the whole scene"
+        assert not (self.surround and self.scene_disp), "The surround technique is not compatible with the batch sizes that akes into account the whole scene"
 
         if self.surround:
             envs = self.envs_all[idx, :]
@@ -131,17 +136,12 @@ class KeypointsDataset(Dataset):
         #! In our case, this number of instances is SCENE_INSTANCE_SIZE and is defined in network/architecture
         threshold = SCENE_INSTANCE_SIZE
 
-        #? Test value to indicate the end of a sequence, or in our case, the end of the sequence of instances
-        #! In practice, we do not use this value since it leads to worse results
-        EOS = repeat(torch.tensor([-10000]),'h -> h w', w = self.inputs_all.size(-1) )
-
         inputs_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.inputs_all.size(-1))
             
         output_new = torch.zeros(len(np.unique(self.names_all)) , threshold,self.outputs_all.size(-1))
         
         kps_new = torch.zeros(len(np.unique(self.names_all)), threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
         
-        #kps_v2 = torch.zeros(self.kps_all.size())
         
         old_name = None
         name_index = 0
@@ -160,24 +160,18 @@ class KeypointsDataset(Dataset):
                 
 
             #? If the old name is different from the new name in the list
-            elif old_name != self.names_all[index]:
-                #! In practice, do not use this value since it leads to worse results
-                #if instance_index<threshold:
-                #    inputs_new[name_index,instance_index,: ] = EOS
+            elif old_name != self.names_all[index]:              
                 instance_index = 0
 
                 if old_name is not None:
                     name_index+=1          
                 old_name = self.names_all[index]
                 
-                
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
                 kps_new[name_index,instance_index,: ] = self.kps_all[index]
                 
                 instance_index+=1
-                
-                
             else:
                 inputs_new[name_index,instance_index,: ] = self.inputs_all[index]
                 output_new[name_index,instance_index,: ] = self.outputs_all[index]
@@ -189,7 +183,114 @@ class KeypointsDataset(Dataset):
         self.outputs_all = output_new
         self.inputs_all = inputs_new
         self.kps_all = kps_new
+        self.names_all = np.unique(np.sort(self.names_all))
+
+        if SCENE_LINE:
+            self.line_scene_placement()
+
+    def line_scene_placement(self):
+
+            #? Function used to fragment the scenes into several clusters. 
+            #? Those clusters correspond to the superposition of the instances in a scene.
+            #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
+            #? This also allows to create an easier to link set of data for the scene level attention mechanism.
+            #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
+            threshold = SCENE_INSTANCE_SIZE
+                    
+            inputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.inputs_all.size(-1))
+                
+            outputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.outputs_all.size(-1))
+            kps_new = torch.zeros(len(self.names_all)*threshold, threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
+            
+            names_new = []
+            
+            instance_index = 0
+            
+            for inputs, outputs, kps, names in zip(self.inputs_all, self.outputs_all, self.kps_all, self.names_all):
+                mask = torch.sum(inputs, dim = 1) != 0
+                
+                #! exclude the scenes with only one instance 
+                if torch.sum(mask) >1:
         
+                    kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
+                    
+                    #? extend the size of the boxes (defined by the 2D keypoints) to allow for more clusters to be created
+                    offset = BOX_INCREASE
+                    x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+                    y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+                    x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+                    y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                            
+                    offset_x = torch.abs(x_max-x_min)*offset
+                    offset_y = torch.abs(y_max-y_min)*offset
+                
+                    box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
+                    #? other option to have the boxes extended indefinitely in the y axis. 
+                    #? This way, as long as vehicles are"alligned" in the y axis, they will be grouped together
+                    #box = rearrange(torch.stack((x_min-offset_x, torch.zeros(y_min.size()).to(y_min.device), x_max+offset_x, torch.ones(y_max.size()).to(y_min.device))), "b n -> n b")
+                
+                    pre_matches = get_iou_matrix(box, box)
+                    matches = []
+                    for i, match in enumerate(pre_matches):
+                        for j, item in enumerate(match):
+                            if item>0:
+                                matches.append((i, j))
+                
+                    #? this defaultdict is made to register the matches between the different boxes
+                    #? and perform a chain of matches
+                    dic_matches = defaultdict(list)
+                    
+                    for match in matches:
+                        if match[0] != match[1]:
+                            #? we don't register the matches between a box and itself
+                            dic_matches[match[0]].append(match[1])
+                            dic_matches[match[1]].append(match[0])
+                            
+                    initialised = list(dic_matches.keys())
+
+                    for i in range(len(box)):
+                        if (len(dic_matches[i]) ==0 and i not in initialised ) or SCENE_UNIQUE:
+                            #? Only matches with itself
+                            inputs_new[instance_index, 0] = inputs[i]
+                            outputs_new[instance_index,0] = outputs[i]
+                            kps_new[instance_index, 0] = kps[i]
+                            names_new.append(names)               
+                            instance_index+=1
+                        else:
+                            #? chain of matches
+                            list_match = dic_matches[i]
+                            dic_matches.pop(i)
+                            flag = True
+                            while flag:
+                                flag = False
+                                for item in list_match:
+                                    if len(dic_matches[item])>0:
+                                        flag = True
+                                        for match in dic_matches[item]:
+                                            list_match.append(match)
+                                        dic_matches.pop(item)
+                                        
+                            for count, match in enumerate(np.unique(list_match)):
+                                inputs_new[instance_index, count] = inputs[match]
+                                outputs_new[instance_index,count] = outputs[ match]
+                                kps_new[instance_index, count] = kps[ match]
+                                                            
+                            if len(list_match)>0:
+                                # ? only update the name once all the matches are processed
+                                instance_index+=1
+                                names_new.append(names)
+                else:
+                    
+                    inputs_new[instance_index] = inputs
+                    outputs_new[instance_index] = outputs
+                    kps_new[instance_index] = kps
+                    names_new.append(names)
+                    instance_index+=1
+                    
+            self.outputs_all = outputs_new[:instance_index]
+            self.inputs_all = inputs_new[:instance_index]
+            self.kps_all = kps_new[:instance_index]
+            self.names_all = names_new
     
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster

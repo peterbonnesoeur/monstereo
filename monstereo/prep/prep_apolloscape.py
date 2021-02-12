@@ -35,7 +35,7 @@ class PreprocessApolloscape:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=20,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False, surround = False):
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=30,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False, surround = False):
 
         logging.basicConfig(level=logging.INFO)
 
@@ -121,10 +121,6 @@ class PreprocessApolloscape:
 
             for ii, scene in enumerate(self.scenes):
                 
-                if ii==(-100):
-                    print("BREAK")
-                    break
-
                 cnt_scenes +=1 
                 
                 scene_id = scene.split("/")[-1].split(".")[0]
@@ -150,22 +146,23 @@ class PreprocessApolloscape:
                 if os.path.isfile(path_pif):
                     boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
                 else:
-                    print("-"*50)
-                    print("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
-                    print("-"*50)
+                    raise ValueError("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
 
-                if dropout == 0:
+                if dropout == 0: 
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
                     # We train on the extended dataset and evaluate on the original dataset
                     self.dic_names[scene_id+".jpg"]['boxes'] = copy.deepcopy(list(boxes_gt_list))
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
 
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
-                    ys_list_final = []
+                
+                
 
                 if phase == 'val' and dropout > 0.0:
                     #? If we are in the validation case, we should not use the dropout parameter.
                     continue
+                
+                ys_list_final = []
 
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
@@ -187,7 +184,7 @@ class PreprocessApolloscape:
                     self.dic_jo[phase]['X'].append(list(inp))
                     self.dic_jo[phase]['Y'].append(ys)
 
-                    #? Help to differenciate the different rypes of dropout instanciated -> Data augmentation
+                    #? Mark the different types of dropout instanciated -> Data augmentation
                     if dropout!=0:
                         mark = "_drop_0"+str(dropout).split(".")[-1]
                     else:
@@ -201,6 +198,9 @@ class PreprocessApolloscape:
                     sys.stdout.write('\r' + 'Saved annotations {}'.format(cnt_ann) + '\t')
 
                 if dropout == 0:
+                    #? For the manual evaluation, the extended dataset with the dropout is not considered.
+                    # We train on the extended dataset and evaluate on the original dataset
+
                     self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
 
 
@@ -332,26 +332,7 @@ class PreprocessApolloscape:
             car_model_list.append(dic_car_model[index_cad])
             
         return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
-        
-        
-        """else:
-            print("HERE")
-            for index_cad, _ in dic_vertices.items() :
-                
-                boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                w, l, h = dic_boxes[index_cad][1:]
-                pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
 
-                boxes_3d_list.append([xc, yc, zc, w, l, h])
-                yaw = yaw%np.pi
-
-                ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, np.sin(yaw), np.cos(yaw), yaw])
-            
-            return boxes_gt_list, boxes_3d_list, None, ys_list"""
-            
-    
-            
 def factory(dataset, dir_apollo):
     """Define dataset type and split training and validation"""
 
@@ -425,127 +406,3 @@ def append_cluster(dic_jo, phase, xx, ys, kps):
             dic_jo[phase]['clst'][clst]['kps'].append(kps)
             dic_jo[phase]['clst'][clst]['X'].append(xx)
             dic_jo[phase]['clst'][clst]['Y'].append(ys)
-
-
-"""
-def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):
-        with open(car_poses) as json_file:
-            data = json.load(json_file) #open the pose of the cars
-        #print("NUMBER OF INSTANCES DETECTED BY PIFPAF", len(data))
-        dic_vertices = {}
-        dic_boxes = {}
-        dic_poses = {}
-        vertices_to_keypoints = {}
-        dic_keypoints = {}
-        dic_car_model = {}
-
-        #Extract the boxes, vertices and the poses of each cars                   
-        for car_index, car in enumerate(data):
-            name_car = car_id2name[car['car_id']].name 
-            car_model = os.path.join(self.path, "car_models_json",name_car+".json")
-
-            intrinsic_matrix = intrinsic_vec_to_mat(K["Camera_"+camera_id])
-
-            vertices_r, triangles, bbox_3d , w, l, h = car_projection(car_model, np.array([1,1,1]), T = np.array(car['pose']),  turn_over = True, bbox = True
-                                                           )
-            vertices_2d = np.matmul(vertices_r,intrinsic_matrix.transpose()) # Projected vertices on the 2D plane
-            
-            box_gt = bbox_gt_extract(bbox_3d, intrinsic_matrix)  # Take the overal bounding box in the 2D space
-            
-            dic_vertices[car_index] = vertices_2d
-            dic_boxes[car_index] = [box_gt, w, l, h]
-            dic_poses[car_index] = np.array(car['pose'])
-            dic_car_model[car_index] = car_model
-
-        new_keypoints = None
-        
-        #print("LENGTH OF THE EXTRACTED POSES",len(dic_poses))
-        #print("LENGTH OF THE EXTRACTED vertices",len(dic_vertices))
-        #  print("DIC_BOXES", dic_boxes)
-                           
-        if "sample" not in self.path:
-                           
-            #car_keypoints = os.path.join(self.path, "keypoints", scene_id)
-            
-            keypoints_list = []
-            boxes_gt_list = []  # Countain the the 2D bounding box of the vehicles
-            boxes_3d_list = []
-            ys_list = []     
-            car_model_list = []          
-            
-            keypoints_pifpaf = pifpaf_info_extractor(path_pif)
-            #print("NUMBER OF KEYPOINTS of PIFPAF", len(keypoints_pifpaf))
-            #print("MAME OF THE FILE", scene_id)
-            #Compute the similarity between each set of car models in the 3D space and the set of keypoints from in the 2D space
-            for index_keypoints, keypoints in enumerate(keypoints_pifpaf):
-                #print("INDEX KEYPOINTS", index_keypoints)
-                dic_keypoints[index_keypoints] = keypoints
-
-                k_t_c, index_cad, count = keypoints_to_cad_model_old(keypoints, dic_vertices, radius = self.radius)
-
-                #print("INDEX_CAD, count", index_cad, count)
-                #print(vertices_to_keypoints.keys() )
-                if index_cad not in vertices_to_keypoints.keys() and count >= 7:
-                    vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
-                elif index_cad in vertices_to_keypoints.keys()  and vertices_to_keypoints[index_cad][1] < count:
-                    vertices_to_keypoints[index_cad] = [index_keypoints, count, k_t_c]
-            
-            #print("LENGTH OF VERTICES TO KEYPOINTS", len(vertices_to_keypoints))
-            #print("CURRENTLY USED RADIUS", self.radius)
-            for index_cad, (index_keypoints, count, k_t_c) in vertices_to_keypoints.items()   :
-
-                if (index_cad != -1 and count >=1):
-
-                    keypoints = dic_keypoints[index_keypoints]
-                    vertices_2d = dic_vertices[index_cad]
-                    
-                    new_keypoints = keypoint_expander(vertices_2d, keypoints, self.buffer ,self.kps_3d)
-
-                    if self.kps_3d :
-                        keypoints_list.append( new_keypoints[:,[1,2,3,0]])
-                    else:
-                        keypoints_list.append( new_keypoints[:,[1,2,0]])
-                                        
-                    boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                    
-                    w, l, h = dic_boxes[index_cad][1:]
-                    pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-                    
-                    boxes_3d_list.append([xc, yc, zc, w, l, h])
-                    
-                    # CHECK IF IT IS PI or 2PI
-                    yaw = yaw%np.pi
-                    
-                    sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
-                    
-                    if True :
-                        rtp = to_spherical([xc, yc, zc])
-                        r, theta, psi = rtp # With r =d = np.linalg.norm([xc,yc,zc]) -> conversion to spherical coordinates 
-                        #print("THETA, PSI, R", theta, psi, r)
-                        ys_list.append([theta, psi, zc, r, h, w, l, sin, cos, yaw])
-                    else:
-                        ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
-                    
-                    
-                    car_model_list.append(dic_car_model[index_cad])
-            #print("LENGTH OF YS_LIST", len(ys_list))     
-            return boxes_gt_list, boxes_3d_list, keypoints_list, ys_list, car_model_list
-        
-        
-        else:
-            print("HERE")
-            for index_cad, _ in dic_vertices.items() :
-                
-                boxes_gt_list.append(dic_boxes[index_cad][0]) #2D corners of the bounding box
-                    
-                w, l, h = dic_boxes[index_cad][1:]
-                pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-
-                boxes_3d_list.append([xc, yc, zc, w, l, h])
-                yaw = yaw%np.pi
-
-                ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, np.sin(yaw), np.cos(yaw), yaw])
-            
-            return boxes_gt_list, boxes_3d_list, None, ys_list
-"""

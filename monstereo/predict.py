@@ -198,6 +198,15 @@ def factory_outputs(args, images_outputs, output_path, pifpaf_outputs, dic_out=N
                 printer = Printer(images_outputs[1], output_path, kk, output_types=args.output_types
                                   , z_max=args.z_max, epistemic=epistemic)
                 figures, axes = printer.factory_axes()
+                
+                if False : 
+                    #? return a white background as the image
+                    im = images_outputs[1].convert('RGBA')
+                    data = np.array(im)
+                    print("HERE", data.shape)
+                    data[..., :-1] = (255,255,255)
+                    images_outputs[1]  = Image.fromarray(data)
+                
                 printer.draw(figures, axes, dic_out, images_outputs[1], show_all=args.show_all, draw_box=args.draw_box,
                              save=True, show=args.show, kps = pifpaf_outputs)
 

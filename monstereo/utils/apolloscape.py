@@ -12,8 +12,6 @@ from .iou import calculate_iou
 import numpy as np
 
 #Clusters for apolloscape:
-
-APOLLO_CLUSTERS = ['10', '20', '30', '50', '>50']
 APOLLO_CLUSTERS = ['5', '10', '20', '35', '50', '60', '70', '>74']
 
 #? Set of functions for apolloscape
@@ -293,7 +291,7 @@ def pifpaf_info_extractor(json_pifpaf):
             
         return list_keypoints
 
-def keypoint_expander(vertices_2d, keypoints, buffer = 100, kps_3d = True) :
+def keypoint_expander(vertices_2d, keypoints, buffer = 30, kps_3d = True) :
     #process the existing keypoints and assign them a depth by minimizing the 
     #distance with the vertices of the projected CAD models.
 
@@ -305,12 +303,6 @@ def keypoint_expander(vertices_2d, keypoints, buffer = 100, kps_3d = True) :
         return np.array(keypoints)
         
     for keypoint in keypoints:
-        if len(keypoint)<2:
-            print("ouch")
-        if len(vertices_2d[0])<2:
-            print("ouch 2")
-            
-            
         res = np.ones([len(vertices_2d),2])*keypoint[1:] - np.transpose([vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2]])
         
         dist = np.linalg.norm(res, axis = 1)
@@ -364,18 +356,14 @@ def keypoints_to_cad_model(keypoints, vertices_cad_dic, iou = 0.3):
     kps = keypoints[keypoints[:,0]>0][:, 1:]
     conf = np.sum(keypoints[:,0])
     box_kp = [min(kps[:,0]), min(kps[:,1]),max(kps[:,0]), max(kps[:,1]), conf ]
-    #print(box_kp)
     
     boxes_gt = []
     for i, vertices_2d in vertices_cad_dic.items():
         x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
-        #print(x,y,vertices_2d[:,2] )
         boxes_gt.append([min(x),min(y), max(x), max(y)])
         
     matches, ious = get_iou_matches_custom([box_kp], boxes_gt, iou_min=iou)
-    
-    #print(matches, ious, len(matches)) 
-    
+        
     if len(matches) == 0:
         return None, 0.0
     else:

@@ -24,7 +24,8 @@ def cli():
                              default='kitti')
     prep_parser.add_argument('--dir_nuscenes', help='directory of nuscenes devkit', default='data/nuscenes/')
     prep_parser.add_argument('--dir_apolloscape', help='directory of the apolloscape dataser', default='data/apolloscape/' )
-    prep_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    prep_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints [Warning, '
+                            'this is only available for the apolloscape vehicle datset with 24 keypoints]', action='store_true')
     prep_parser.add_argument('--pifpaf_kps', help='indicates that we are using the keypoints processed ', action='store_true')
     prep_parser.add_argument('--iou_min', help='minimum iou to match ground truth', type=float, default=0.3)
     prep_parser.add_argument('--variance', help='new', action='store_true')
@@ -32,11 +33,11 @@ def cli():
     prep_parser.add_argument('--monocular', help='new', action='store_true')
     prep_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
     prep_parser.add_argument('--buffer', help='indicates the quantity of keypoints used from the car models to do the assignment between 2D adn 3D keypoints', default = 20)
-    prep_parser.add_argument('--radius', help='Radius to determine wether one set of keypoint can be assimilated to which vehicle in the reprojected 3D model view', default = 200)
-    prep_parser.add_argument('--dropout', help='probability of dropout of the pifpaf keypoints during the processing', type=float, default = 0.0)
+    prep_parser.add_argument('--radius', help='Radius to determine wether one set of keypoint can be assimilated to which vehicle in the re-projected 3D model view', default = 200)
+    prep_parser.add_argument('--dropout', help='Extend the dataset by providing a dropout on some of its keypoints with a probability of : dropout', type=float, default = 0.0)
     prep_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
-    prep_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
-    prep_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    prep_parser.add_argument('--transformer', help='Use a Transformer as the encoder of the Neural network', action = 'store_true')
+    prep_parser.add_argument('--surround', help='Gather the surrounding information for each set of keypoints', action = 'store_true')
     prep_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     prep_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     prep_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
@@ -54,12 +55,13 @@ def cli():
                                 help='what to output: json keypoints skeleton for Pifpaf'
                                      'json bird front combined for Monoloco')
     predict_parser.add_argument('--show', help='to show images', action='store_true')
-    predict_parser.add_argument('--joints_folder', help='Folder containing the pifpaf anotations',default=None)
+    predict_parser.add_argument('--joints_folder', help='Folder containing the pifpaf annotations',default=None)
     predict_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
-    predict_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    predict_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints [Warning, '
+                            'this is only available for the apolloscape vehicle datset with 24 keypoints]', action='store_true')
     predict_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
-    predict_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
-    predict_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    predict_parser.add_argument('--transformer', help='Use a Transformer as the encoder of the Neural network', action = 'store_true')
+    predict_parser.add_argument('--surround', help='Gather the surrounding information for each set of keypoints', action = 'store_true')
     predict_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     predict_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     predict_parser.add_argument('--scene_disp', help='Uses the scene formatting', action = 'store_true')
@@ -99,7 +101,8 @@ def cli():
     training_parser.add_argument('--bs', type=int, default=512, help='input batch size')
     training_parser.add_argument('--monocular', help='whether to train monoloco', action='store_true')          #TRUE for us
     training_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
-    training_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    training_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints [Warning, '
+                            'this is only available for the apolloscape vehicle datset with 24 keypoints]', action='store_true')
     training_parser.add_argument('--dropout', type=float, help='dropout. Default no dropout', default=0.2)
     training_parser.add_argument('--lr', type=float, help='learning rate', default=0.001)
     training_parser.add_argument('--sched_step', type=float, help='scheduler step time (epochs)', default=30)
@@ -112,12 +115,13 @@ def cli():
     training_parser.add_argument('--activity', help='new', action='store_true')
     training_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
     training_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
-    training_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
+    training_parser.add_argument('--transformer', help='Use a Transformer as the encoder of the Neural network', action = 'store_true')
     training_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
     training_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     training_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     training_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
     training_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints (for KITTI evaluation)')
+    training_parser.add_argument('--num_heads', type=int, help='Number of heads for the multi-headed attention mechanism', default = 4)
 
 
     # Evaluation
@@ -139,12 +143,13 @@ def cli():
     eval_parser.add_argument('--variance', help='evaluate keypoints variance', action='store_true')
     eval_parser.add_argument('--activity', help='evaluate activities', action='store_true')
     eval_parser.add_argument('--net', help='Choose network: monoloco, monoloco_p, monoloco_pp, monstereo')
-    eval_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints', action='store_true')
+    eval_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints [Warning, '
+                            'this is only available for the apolloscape vehicle datset with 24 keypoints]', action='store_true')
     eval_parser.add_argument('--vehicles', help="Indicate that we are training,evaluating or predicting vehicles position instead of human's one", action ='store_true')
     eval_parser.add_argument('--model_mono', help='mono model that can be added to compute the score evaluation for monoloco_pp', default = None)
     eval_parser.add_argument('--confidence', help='Add the confidences of the keypoints in the processing loop ', action='store_true')
-    eval_parser.add_argument('--transformer', help='Use a Trasnformer as the encoder of the Neural network', action = 'store_true')
-    eval_parser.add_argument('--surround', help='Gather the surrounding informations for each set of keypoints', action = 'store_true')
+    eval_parser.add_argument('--transformer', help='Use a Transformer as the encoder of the Neural network', action = 'store_true')
+    eval_parser.add_argument('--surround', help='Gather the surrounding information for each set of keypoints', action = 'store_true')
     eval_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     eval_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     eval_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
@@ -155,6 +160,11 @@ def cli():
 
 def main():
     args = cli()
+
+    if args.transformer and args.command == 'prep':
+        #? For the preparation step with the transformer, we want to have the confidence as well as the 2d coordinate of the keypoints
+        #? The confidence is always needed since it is used to obtain the mask for the inputs.
+        args.confidence=True
     if args.command == 'predict':
         if args.activity:
             from .activity import predict
@@ -171,17 +181,17 @@ def main():
         elif 'apolloscape_mini' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
             prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer,  kps_3d = args.kps_3d,
-                                         dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer, surround = args.surround)
+                                         dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
             prep.run()
         elif 'apolloscape' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
             prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer,  kps_3d = args.kps_3d, dropout = args.dropout,
-                                         confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer, surround = args.surround)
+                                         confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
             prep.run()
 
         else:
             from .prep.prep_kitti import PreprocessKitti
-            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer, surround = args.surround)
+            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer)
             if args.activity:
                 prep.prep_activity()
             else:
@@ -195,7 +205,7 @@ def main():
                                    multiplier=args.multiplier, r_seed=args.r_seed, 
                                    vehicles = args.vehicles, kps_3d = args.kps_3d,
                                    dataset = args.dataset, confidence = args.confidence,
-                                   transformer = args.transformer, surround = args.surround,
+                                   transformer = args.transformer,
                                    lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine,
                                    dir_ann = args.dir_ann)
             hyp_tuning.train()
@@ -204,10 +214,10 @@ def main():
             from .train import Trainer
             training = Trainer(joints=args.joints, epochs=args.epochs, bs=args.bs,
                                monocular=args.monocular, dropout=args.dropout, lr=args.lr, sched_step=args.sched_step,
-                               n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
+                               n_stage=args.n_stage,  num_heads = args.num_heads, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
                                r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.kps_3d,
                                dataset = args.dataset, confidence = args.confidence, transformer = args.transformer,
-                               surround = args.surround, lstm = args.lstm, scene_disp= args.scene_disp, scene_refine = args.scene_refine)
+                               lstm = args.lstm, scene_disp= args.scene_disp, scene_refine = args.scene_refine)
 
             _ = training.train()
             _ = training.evaluate()
@@ -236,7 +246,7 @@ def main():
                 from .eval.generate_kitti import GenerateKitti
                 kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
                                           hidden_size=args.hidden_size, vehicles = args.vehicles, model_mono = args.model_mono,
-                                          confidence = args.confidence, transformer = args.transformer, surround = args.surround,
+                                          confidence = args.confidence, transformer = args.transformer, 
                                           lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine)
                 kitti_txt.run()
 
@@ -254,8 +264,8 @@ def main():
             elif 'apolloscape' in args.dataset:
                 from .train import Trainer
                 training = Trainer(joints=args.joints, hidden_size=args.hidden_size, dataset=args.dataset, monocular = args.monocular, 
-                                    vehicles = args.vehicles ,kps_3d = args.kps_3d , confidence = args.confidence, transformer=args.transformer, surround = args.surround)
-                _ = training.evaluate(load=True, model=args.model, debug=False, confidence = args.confidence, transformer = args.transformer, surround = args.surround)
+                                    vehicles = args.vehicles ,kps_3d = args.kps_3d , confidence = args.confidence, transformer=args.transformer)
+                _ = training.evaluate(load=True, model=args.model, debug=False, confidence = args.confidence, transformer = args.transformer)
             else:
                 raise ValueError("Option not recognized")
 

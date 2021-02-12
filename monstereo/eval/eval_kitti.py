@@ -24,15 +24,16 @@ class EvalKitti:
     CLUSTERS = ('easy', 'moderate', 'hard', 'all', '3', '5', '7', '9', '11', '13', '15', '17', '19', '21', '23', '25',
                 '27', '29', '31', '49', '54', '63', '74')
     ALP_THRESHOLDS = ('<0.5m', '<1m', '<2m')
-    OUR_METHODS = ['monoloco_pp']#['geometric', 'monoloco', 'monoloco_pp', 'pose', 'reid', 'monstereo']
-    METHODS_MONO = ['m3d', 'monodis', 'monogrnet', 'smoke']#, 'monopsr']
+    OUR_METHODS = ['monoloco_pp', 'monstereo']#['geometric', 'monoloco', 'monoloco_pp', 'pose', 'reid', 'monstereo']
+    #METHODS_MONO = ['m3d', 'monodis', 'monogrnet', 'smoke']#, 'monopsr']
+    METHODS_MONO = ['m3d']#, 'monopsr']
     METHODS_STEREO = ['3dop', 'pseudo-lidar']#['3dop', 'psf', 'pseudo-lidar', 'e2e', 'oc-stereo']
     BASELINES = []#'task_error', 'pixel_error']
     HEADERS = ('method', '<0.5', '<1m', '<2m', 'easy', 'moderate', 'hard', 'all')
     CATEGORIES = ('pedestrian',)
 
-    def __init__(self, thresh_iou_monoloco=0.3, thresh_iou_base=0.3, thresh_conf_monoloco=0.2, thresh_conf_base=0.5,
-                 verbose=False, vehicles = False, transformer = False,dir_ann = None):
+    def __init__(self, thresh_iou_monoloco=0.3, thresh_iou_base=0.3, thresh_conf_monoloco=0.2 , thresh_conf_base=0.5,
+                 verbose=False, vehicles = False, transformer = False,dir_ann = None, logger = None):
 
         self.main_dir = os.path.join('data', 'kitti')
 
@@ -54,7 +55,10 @@ class EvalKitti:
         now = datetime.datetime.now()
         now_time = now.strftime("%Y%m%d-%H%M%S")[2:]
         name_out = 'ms-' + now_time+'-'+self.identifier+"eval"+".txt"
-        self.logger = set_logger(os.path.join('data', 'logs', name_out))
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = set_logger(os.path.join('data', 'logs', name_out))
 
 
         path_train = os.path.join('splits', 'kitti_train.txt')
@@ -88,12 +92,10 @@ class EvalKitti:
         self.dic_thresh_conf['e2e-pl'] = -100  # They don't have enough detections
         self.dic_thresh_conf['oc-stereo'] = -100
 
-        self.logger.info("datast used for the evaluation: {}".format(dir_ann))
+        self.logger.info("dataset used for the evaluation: {}".format(dir_ann))
         # Extract validation images for evaluation
         names_gt = tuple(os.listdir(self.dir_gt))
         _, self.set_val = split_training(names_gt, path_train, path_val)
-
-        # self.set_val = ('002282.txt', )
 
         # Define variables to save statistics
         self.dic_methods = self.errors = self.dic_stds = self.dic_stats = self.dic_cnt = self.cnt_gt = self.category \
@@ -399,8 +401,8 @@ class EvalKitti:
                 for perc in ['<0.5m', '<1m', '<2m']]
                for key in all_methods]
 
-        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:3] + ' [' +
-                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:3] + '%]'
+        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 3))[:4] + ' [' +
+                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:4] + '%]'
                 for clst in self.CLUSTERS[:4]]
                for key in all_methods]
 
@@ -458,11 +460,17 @@ class EvalKitti:
                 for perc in ['<0.5m', '<1m', '<2m']]
                for key in all_methods]
 
-        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 2))[:4] + ' [' +
+        ale = [[str(round(self.dic_stats['test'][key][clst]['mean'], 3))[:] + ' [' +
                 str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:3] + '%]'
                 for clst in self.CLUSTERS[:4]]
                for key in all_methods]
 
+        ale = [[str(self.dic_stats['test'][key][clst]['mean'])[:] + ' [' +
+                str(round(self.dic_stats['test'][key][clst]['cnt'] / self.cnt_gt[clst] * 100))[:3] + '%]'
+                for clst in self.CLUSTERS[:4]]
+               for key in all_methods]
+
+        print(ale)
         results = [[key] + alp[idx] + ale[idx] for idx, key in enumerate(all_methods)]
         print(tabulate(results, headers=self.HEADERS))
         print('-' * 90 + '\n')
