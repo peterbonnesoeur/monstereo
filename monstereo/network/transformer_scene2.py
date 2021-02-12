@@ -29,14 +29,10 @@ class InputEmbedding(nn.Module):
             self.position_emb =  PositionalEncoding(2, kind = kind, max_len = max_len)
 
         #? The padding can be the mean over the whole dataset. 
-        #TODO : find a better way to implement this (this save and load will not work in a trial and error environment)
         self.pad = torch.load('docs/tensor.pt')
 
     def forward(self, x, surround = None, mask_off = False):
 
-        if  x.size(-1)>10: #? In case we use a refinement of the outputs
-            if x.size(-1)<100:
-                pass
 
         if self.scene_disp:
             #? The padded scenes are arrays of 0
@@ -88,11 +84,10 @@ class InputEmbedding(nn.Module):
             #? Add the positionnal embedding at the end of the array
             out =self.position_emb(out)
 
-            #print(torch.mean(pad, dim = 0).size(), torch.zeros(out.size(-1)- pad.size(-1) ).size())
             pad = torch.cat((torch.mean(pad, dim = 0), torch.zeros(out.size(-1)- pad.size(-1) )), dim = -1).to(out.device)
             if not mask_off:
-                out[condition] = repeat(pad, 'w -> h w', h = out[condition].size(0))
-                #out[condition] = 0
+                #out[condition] = repeat(pad, 'w -> h w', h = out[condition].size(0))
+                out[condition] = 0
 
             return out, mask 
 
@@ -112,18 +107,8 @@ class InputEmbedding(nn.Module):
             for i, mask in enumerate(masks):
                 if mask ==False:
                     #? Add the EOS pad at the end of each valid value for each scene
-                    inputs[index, (i):,: ]=repeat(pad, "h w -> (h c) w ", c = (masks.size(0)-i))#[(masks.size(0)-i-1)]
-
-
+                    inputs[index, (i):,: ]=repeat(pad, "h w -> (h c) w ", c = (masks.size(0)-i))
                     #inputs[index, i, :] = EOS
-                    #inputs[index, (i+1):,: ]=repeat(pad, "h w -> (h c) w ", c = (masks.size(0)-i-1))[(masks.size(0)-i-2)]
-                    
-                    #? Repeat value
-                    #print(repeat(inputs[index, :i, :], "h w -> (h c) w ", c = (masks.size(0)-i-1)), repeat(inputs[index, :i, :], "h w -> (h c) w ", c = (masks.size(0)-i-1)).size())
-                    #print(inputs[index, (i+1):,: ].size(), (masks.size(0)-i-1), i, masks.size())
-                    #inputs[index, (i):,: ]=repeat(inputs[index, :i, :], "h w -> (h c) w ", c = (masks.size(0)-i))[(masks.size(0)-i-1)]
-                    #inputs[index, (i+1):,: ]=repeat(inputs[index, :i, :], "h w -> (h c) w ", c = (masks.size(0)-i-1))[(masks.size(0)-i-2)]
-
                     break
 
         return inputs
@@ -170,7 +155,6 @@ class PositionalEncoding(nn.Module):
 
 class Attention(nn.Module):
 
-    #TODO: For a cleaner code, remove the head contribution from the rearranging part -> no perf change but just easier to understand
     def __init__(self, embed_dim, d_attention,num_heads, embed_dim2 = None):
         super().__init__()
         self.num_heads = num_heads
@@ -221,15 +205,46 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim, d_attention, num_heads, embed_dim2 = None):
         super().__init__()
         self.num_heads = num_heads
-        #? In our current impèlementation, the multi-headed attention mechanism is handeld by the usage 
+        #? In our current implementation, the multi-headed attention mechanism is handeld by the usage 
         # of severall single headed attention mechanisms
         self.attns = nn.ModuleList([Attention(embed_dim, d_attention,1, embed_dim2) for _ in range(num_heads)])
 
-        #? To represent the Matrix multiplications, we are using fully conected layers with no biasses
+        #? To represent the Matrix multiplications, we are using fully connected layers with no biasses
         self.linear = nn.Linear(num_heads * d_attention, embed_dim, bias = False)
     def forward(self, Q_vec, K_vec, V_vec, mask):
         results = [attn(Q_vec, K_vec, V_vec, mask) for attn in self.attns]
         return self.linear(torch.cat(results, dim=-1))
+
+    
+class Encoder(nn.Module):
+    def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1,kind = "add",
+                 confidence = True, scene_disp = False, reordering = False, refining = False):
+        super().__init__()
+        if d_attention is None:
+            d_attention = embed_dim
+
+        self.refining = refining
+        self.input_enc = InputEmbedding(embed_dim, n_token, kind = kind, 
+                                        confidence = confidence, scene_disp = scene_disp, 
+                                        reordering = reordering)
+        self.layers = nn.ModuleList([EncoderLayer(embed_dim =embed_dim, d_attention =d_attention, n_words = n_words,
+                                                num_heads = num_heads) for _ in range(n_layers)])
+        if refining:
+            self.layers = nn.ModuleList([EncoderLayer_refine(embed_dim =embed_dim, d_attention =d_attention,n_words = n_words,
+                                                num_heads = num_heads) for _ in range(n_layers)])
+        
+    def forward(self, x, surround = None,mask = None):
+        
+        mask_off = False
+        out, mask = self.input_enc(x, surround = surround, mask_off = mask_off)
+        self.mask = mask.detach()
+
+        for i, layer in enumerate(self.layers):
+            out = layer(out, self.mask)
+        return out
+
+    def get_mask(self):
+        return self.mask
 
 class EncoderLayer(nn.Module):
     def __init__(self,
@@ -255,6 +270,7 @@ class EncoderLayer(nn.Module):
         return self.ln2(ffn_out+ln1_out)
 
 class EncoderLayer_refine(nn.Module):
+    #! Experimental, not used
     def __init__(self,
                  embed_dim=3,
                  d_attention = 3,
@@ -263,8 +279,6 @@ class EncoderLayer_refine(nn.Module):
         super().__init__()
         self.attn = MultiHeadAttention(embed_dim, d_attention, num_heads)
         self.ffn = nn.Linear(embed_dim, embed_dim)
-        self.ln1 = nn.LayerNorm(embed_dim)
-        self.ln2 = nn.LayerNorm(embed_dim)
 
         self.ln1 = nn.LayerNorm([n_words,embed_dim])
         self.ln2 = nn.LayerNorm([n_words,embed_dim])
@@ -278,161 +292,7 @@ class EncoderLayer_refine(nn.Module):
 
         return self.ln2(ffn_out+ln1_out)
 
-    
-class Encoder(nn.Module):
-    def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1,kind = "add",
-                 confidence = True, scene_disp = False, reordering = False, refining = False):
-        super().__init__()
-        if d_attention is None:
-            d_attention = embed_dim
 
-        self.refining = refining
-        self.input_enc = InputEmbedding(embed_dim, n_token, kind = kind, 
-                                        confidence = confidence, scene_disp = scene_disp, 
-                                        reordering = reordering)
-        self.layers = nn.ModuleList([EncoderLayer(embed_dim =embed_dim, d_attention =d_attention, n_words = n_words,
-                                                num_heads = num_heads) for _ in range(n_layers)])
-        if refining:
-            self.layers = nn.ModuleList([EncoderLayer_refine(embed_dim =embed_dim, d_attention =d_attention,n_words = n_words,
-                                                num_heads = num_heads) for _ in range(n_layers)])
-        
-    def forward(self, x, surround = None,mask = None):
-        
-        if self.refining :
-            mask_off = True
-        else:
-            mask_off = False
-        out, mask = self.input_enc(x, surround = surround, mask_off = mask_off)
-        self.mask = mask.detach()
-
-
-
-        for i, layer in enumerate(self.layers):
-            out = layer(out, self.mask)
-        return out
-
-    def get_mask(self):
-        return self.mask
-
-
-class layerNorm(nn.Module):
-    def __init__(self, embed_dim=3, n_words = 20):
-        super().__init__()
-        self.ln1 = nn.LayerNorm([embed_dim, n_words])
-        self.ln2 = nn.LayerNorm(n_words)
-    def forward(self,x):
-
-        out = self.ln2(rearrange(x, 'b n d -> b d n'))
-        return rearrange(out, 'b d n -> b n d')
-
-class DecoderLayer(nn.Module):
-    def __init__(self,
-                 embed_dim=3,
-                 d_attention =3,
-                 n_words = 20,
-                 num_heads= 1,):
-        super().__init__()
-
-        self.attn1 = MultiHeadAttention(embed_dim, d_attention, num_heads)
-        self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads)
-        self.ffn = nn.Linear(embed_dim, embed_dim)
-
-        self.ln1 = nn.LayerNorm([n_words,embed_dim])
-        self.ln2 = nn.LayerNorm([n_words,embed_dim])
-        self.ln3 = nn.LayerNorm([n_words,embed_dim])
-    
-    def forward(self, x, encoder_output, mask=None):
-        
-
-        attn1_out = self.attn1(x, x, x, mask)
-        ln1_out = self.ln1(attn1_out + x)
-
-        attn2_out = self.attn2(ln1_out,ln1_out,ln1_out,mask)
-        #attn2_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
-        
-        ln2_out = self.ln2(attn2_out + ln1_out)
-
-        ffn_out = nn.functional.relu(self.ffn(ln2_out))
-
-        return self.ln3(ffn_out + ln2_out)
-
-
-
-class DecoderLayer_refine(nn.Module):
-    def __init__(self,
-                 embed_dim=3,
-                 d_attention = 3,
-                 n_words = 20,
-                 num_heads= 1,
-                 embed_dim2 = None):
-        super().__init__()
-        self.attn1 = MultiHeadAttention(embed_dim, d_attention, num_heads)
-        self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads, embed_dim2)
-        self.ffn = nn.Linear(embed_dim, embed_dim)
-        self.ffn2 = nn.Linear(embed_dim, embed_dim)
-
-        self.ln1 = nn.LayerNorm([n_words,embed_dim])
-        self.ln2 = nn.LayerNorm([n_words,embed_dim])
-        self.ln3 = nn.LayerNorm([n_words,embed_dim])
-    def forward(self, x, encoder_output, mask=None):
-
-        """attn1_out = self.attn1(x, x, x, mask)
-        #attn1_out = self.dropout(attn1_out)
-        ln1_out = self.ln1(attn1_out + x)
-        
-        
-        #attn2_out = self.attn2(ln1_out,ln1_out,ln1_out,mask)
-        attn2_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
-        #attn2_out = self.dropout(attn2_out)
-        
-        ln2_out = self.ln2(attn2_out + ln1_out)
-
-        #return self.pfn(ln2_out)
-        #ln2_out = ln1_out
-        attn3_out = self.attn3(ln2_out,encoder_output,encoder_output,mask)
-
-        ln3_out = self.ln3(attn3_out + ln2_out)
-
-        ffn_out = nn.functional.relu(self.ffn(ln3_out))
-        #return ffn_out + ln2_out
-        #ffn_out = self.dropout(ffn_out)
-        return self.ln3(ffn_out + ln3_out)"""
-        
-
-       #? OLD 
-
-        #print(x.size())
-        #raise ValueError
-        
-        ln1_out = self.ln1(x)
-        #return ln1_out
-        attn1_out = self.attn1(ln1_out, ln1_out, ln1_out, mask)
-        #attn1_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
-
-        out = attn1_out + x
-        
-        ffn_out = out + self.ffn2(nn.functional.relu(self.ffn(self.ln2(out))))
-
-        return ffn_out
-        
-        ffn_out = self.nn.functional.relu(self.ffn(ln1_out))
-
-        return self.ln3(ffn_out + ln1_out)
-
-
-        #attn2_out = self.attn2(ln1_out,encoder_output,encoder_output,mask)
-
-        attn2_out = self.attn2(ln1_out,ln1_out,ln1_out,mask)
-
-        ln2_out = self.ln2(attn2_out) + ln1_out
-
-        #attn3_out = self.attn3(ln2_out,encoder_output,encoder_output,mask)
-
-        #ln3_out = self.ln3(attn3_out) + ln2_out
-
-        ffn_out = nn.functional.relu(self.ffn(ln2_out))
-
-        return self.ln3(ffn_out) + ln2_out
     
 class Decoder(nn.Module):
     def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1, kind = "add", 
@@ -463,6 +323,69 @@ class Decoder(nn.Module):
     
     def get_mask(self):
         return self.mask
+
+class DecoderLayer(nn.Module):
+    def __init__(self,
+                 embed_dim=3,
+                 d_attention =3,
+                 n_words = 20,
+                 num_heads= 1,):
+        super().__init__()
+
+        self.attn1 = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        self.ffn = nn.Linear(embed_dim, embed_dim)
+
+        self.ln1 = nn.LayerNorm([n_words,embed_dim])
+        self.ln2 = nn.LayerNorm([n_words,embed_dim])
+        self.ln3 = nn.LayerNorm([n_words,embed_dim])
+    
+    def forward(self, x, encoder_output, mask=None):
+        
+
+        attn1_out = self.attn1(x, x, x, mask)
+        ln1_out = self.ln1(attn1_out + x)
+
+        attn2_out = self.attn2(ln1_out,ln1_out,ln1_out,mask)
+        
+        ln2_out = self.ln2(attn2_out + ln1_out)
+
+        ffn_out = nn.functional.relu(self.ffn(ln2_out))
+
+        return self.ln3(ffn_out + ln2_out)
+
+
+
+class DecoderLayer_refine(nn.Module):
+
+    #! Experimental, not used
+    def __init__(self,
+                 embed_dim=3,
+                 d_attention = 3,
+                 n_words = 20,
+                 num_heads= 1,
+                 embed_dim2 = None):
+        super().__init__()
+        self.attn1 = MultiHeadAttention(embed_dim, d_attention, num_heads)
+        self.attn2 = MultiHeadAttention(embed_dim, d_attention, num_heads, embed_dim2)
+        self.ffn = nn.Linear(embed_dim, embed_dim)
+        self.ffn2 = nn.Linear(embed_dim, embed_dim)
+
+        self.ln1 = nn.LayerNorm([n_words,embed_dim])
+        self.ln2 = nn.LayerNorm([n_words,embed_dim])
+        self.ln3 = nn.LayerNorm([n_words,embed_dim])
+    def forward(self, x, encoder_output, mask=None):
+        
+        ln1_out = self.ln1(x)
+        #return ln1_out
+        attn1_out = self.attn1(ln1_out, ln1_out, ln1_out, mask)
+
+        out = attn1_out + x
+        
+        ffn_out = out + self.ffn2(nn.functional.relu(self.ffn(self.ln2(out))))
+
+        return ffn_out
+       
 
 
 
@@ -513,8 +436,8 @@ class Transformer(nn.Module):
                 decoder_mask = None):
         
         #? get the output of the encoder mechanism
-        encoder_out = self.encoder(encoder_input, surround = surround, mask = encoder_mask)
-        #encoder_out, decoder_mask = self.decoder.input_enc(encoder_input, surround = surround, mask_off = False)
+        #encoder_out = self.encoder(encoder_input, surround = surround, mask = encoder_mask)
+        encoder_out, decoder_mask = self.decoder.input_enc(encoder_input, surround = surround, mask_off = False)
         if self.embed_dim != self.embed_dim2 and decoder_mask is None:
             decoder_mask = self.encoder.get_mask()
             

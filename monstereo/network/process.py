@@ -90,7 +90,7 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
     return kps_out
 
 
-def reorganise_scenes(array, condition= "width", refining = False, descending = False):  
+def reorganise_scenes(array, condition= "ypos", refining = False, descending = False):  
         #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
         
         if refining:

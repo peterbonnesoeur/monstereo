@@ -10,10 +10,13 @@ from einops import rearrange, repeat
 SCENE_INSTANCE_SIZE = 20
 
 #? divide the scenes into lines (instances that are superposing themselves)
-SCENE_LINE = False
+SCENE_LINE = True
 
 #? define if we need to have an unique instance per scene
 SCENE_UNIQUE = False
+
+if SCENE_UNIQUE:
+    SCENE_LINE = True
 
 #? factor to have more or less overlap between the instances during the division of the scenes into lines
 BOX_INCREASE = 0.2
@@ -70,7 +73,6 @@ class SimpleModel(nn.Module):
         self.scene_disp = scene_disp
         self.scene_refine = scene_refine
         self.confidence = confidence
-        self.refiner_flag = True
 
         assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time (are you a psycho ??)"
         # Initialize weights
@@ -144,7 +146,7 @@ class SimpleModel(nn.Module):
                                                         d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
                                                         scene_disp = False)
                                                                 #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
-                                                                #? The scene_disp flag tells us if we are reasonning with scenes or keypoints 
+                                                                #? The scene_disp flag tells us if we are reasoning with scenes or keypoints 
                                                                 #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
                                                                 #? the instances depending on their height for example)
 
@@ -213,7 +215,7 @@ class SimpleModel(nn.Module):
                     embed_dim = n_inp
 
                 d_attention = int(embed_dim/2) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
-                #d_attention = int(embed_dim/n_head) #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
+                #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
 
                 n_words = int(self.stereo_size/3) if self.confidence else int(self.stereo_size/2)
                 self.transformer_kps=  TransformerModel(n_base_dim = n_inp, n_target_dim = embed_dim*mul_output, n_words = n_words ,kind = kind, embed_dim = embed_dim, 
@@ -325,9 +327,7 @@ class SimpleModel(nn.Module):
             
             aux = self.w_aux(y)
 
-            
-
-            if self.scene_refine and True: 
+            if self.scene_refine : 
                 #? Second step of the refinement process
                 #? refinement of the output with a self-attention 
                 #? mechanism at the scene level
@@ -344,13 +344,13 @@ class SimpleModel(nn.Module):
                 
 
                 y = self.w_scene_refine(y)
-                #y = self.w_fin_refine(y)
             else:
                 y = self.batch_norm1(y)
                 y = self.relu(y)
                 y = self.dropout(y)
+                
                 y = self.w_fin(y)
-            
+                
             y = torch.cat((y, aux), dim=1)
 
             return y
