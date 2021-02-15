@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from .transformer_scene2 import Transformer as TransformerModel
+from .transformer import Transformer as TransformerModel
 from einops import rearrange, repeat
 
 #? Define the size of a scene (For Kitti : 20)
@@ -55,7 +55,7 @@ class MyLinearSimple(nn.Module):
 class SimpleModel(nn.Module):
 
     def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, num_heads = 4, device='cuda', transformer = False, 
-                confidence = True, surround = False, lstm = False, scene_disp = False, scene_refine = False):
+                confidence = True,  lstm = False, scene_disp = False, scene_refine = False):
         super(SimpleModel, self).__init__()
 
         self.stereo_size = input_size
@@ -68,7 +68,6 @@ class SimpleModel(nn.Module):
         self.linear_stages = []
         self.device = device
         self.transformer = transformer
-        self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
         self.scene_refine = scene_refine
@@ -369,8 +368,6 @@ class SimpleModel(nn.Module):
 
             y = self.w2(y)
             aux = self.w_aux(y)
-
-
             
             y = self.w3(y)
             y = self.batch_norm3(y)

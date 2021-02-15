@@ -29,12 +29,12 @@ def predict(args):
     if 'mono' in args.mode:
         monoloco = Loco(model=args.model, net='monoloco_pp',
                         device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence,
-                        transformer = args.transformer,surround = args.surround, lstm = args.lstm, scene_disp = args.scene_disp)
+                        transformer = args.transformer, lstm = args.lstm, scene_disp = args.scene_disp)
       
     if 'stereo' in args.mode:
         monstereo = Loco(model=args.model, net='monstereo',
                          device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence,
-                        transformer = args.transformer,surround = args.surround, lstm = args.lstm, scene_disp = args.scene_disp)
+                        transformer = args.transformer, lstm = args.lstm, scene_disp = args.scene_disp)
       
 
     # data

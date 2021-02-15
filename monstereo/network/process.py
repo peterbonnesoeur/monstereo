@@ -157,10 +157,6 @@ def reorganise_lines(inputs, offset = 0.2, unique  = False):
                     
             box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
 
-            #? other option to have the boxes extended indefinitely in the y axis. 
-            #? This way, as long as vehicles are"alligned" in the y axis, they will be grouped together
-            #box = rearrange(torch.stack((x_min-offset_x, torch.zeros(y_min.size()).to(y_min.device), x_max+offset_x, torch.ones(y_max.size()).to(y_min.device))), "b n -> n b")
-
             pre_matches = get_iou_matrix(box, box)
             matches = []
             #! detect all the matches happening between our boxes (of course, a box has an intersection with itself)

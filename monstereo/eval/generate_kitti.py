@@ -30,7 +30,7 @@ class GenerateKitti:
     #METHODS = ['monstereo']
 
     def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, 
-                model_mono = None, confidence = False, transformer = False, surround = False, lstm = False, 
+                model_mono = None, confidence = False, transformer = False,  lstm = False, 
                 scene_disp = False, scene_refine = False):
 
         # Load monoloco
@@ -44,7 +44,7 @@ class GenerateKitti:
         if 'monstereo' in self.METHODS:
             self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, p_dropout=p_dropout,
                                 linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer,
-                                surround = surround, lstm = lstm, scene_disp = scene_disp)
+                                lstm = lstm, scene_disp = scene_disp)
         
 
         if 'monoloco_pp' in self.METHODS:
@@ -59,7 +59,7 @@ class GenerateKitti:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
                                     p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, 
-                                    transformer = transformer, surround= surround, lstm = lstm, scene_disp = self.scene_disp, 
+                                    transformer = transformer,  lstm = lstm, scene_disp = self.scene_disp, 
                                     scene_refine=self.scene_refine)
 
         if 'monoloco' in self.METHODS:

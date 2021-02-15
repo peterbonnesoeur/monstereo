@@ -51,7 +51,7 @@ class KeypointsDataset(Dataset):
     Dataloader from nuscenes or kitti datasets
     """
 
-    def __init__(self, joints, phase, kps_3d = False, transformer = False, surround = False, scene_disp = False):
+    def __init__(self, joints, phase, kps_3d = False, transformer = False, scene_disp = False):
         """
         Load inputs and outputs from the pickles files from gt joints, mask joints or both
         """
@@ -63,13 +63,8 @@ class KeypointsDataset(Dataset):
 
         self.kps_3d = kps_3d
         self.transformer = transformer
-        self.surround = surround
         self.scene_disp = scene_disp
         
-        # Define input and output for normal training and inference
-        #TODO : perform additionnal tests on the surround argument 
-        if self.surround : 
-            self.envs_all = torch.tensor(dic_jo[phase]['env'])
 
         
         self.inputs_all = torch.tensor(dic_jo[phase]['X'])
@@ -120,12 +115,8 @@ class KeypointsDataset(Dataset):
         names = self.names_all[idx]
         kps = self.kps_all[idx, :]
 
-        assert not (self.surround and self.scene_disp), "The surround technique is not compatible with the batch sizes that akes into account the whole scene"
 
-        if self.surround:
-            envs = self.envs_all[idx, :]
-        else:
-            envs = self.inputs_all[idx, :]
+        envs = self.inputs_all[idx, :]
 
         return inputs, outputs, names, kps, envs
 
@@ -225,10 +216,7 @@ class KeypointsDataset(Dataset):
                     offset_y = torch.abs(y_max-y_min)*offset
                 
                     box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
-                    #? other option to have the boxes extended indefinitely in the y axis. 
-                    #? This way, as long as vehicles are"alligned" in the y axis, they will be grouped together
-                    #box = rearrange(torch.stack((x_min-offset_x, torch.zeros(y_min.size()).to(y_min.device), x_max+offset_x, torch.ones(y_max.size()).to(y_min.device))), "b n -> n b")
-                
+
                     pre_matches = get_iou_matrix(box, box)
                     matches = []
                     for i, match in enumerate(pre_matches):
@@ -318,9 +306,6 @@ class KeypointsDataset(Dataset):
 
         outputs = torch.tensor(self.dic_clst[clst]['Y']).float()
         
-        if self.surround:
-            envs = torch.tensor(self.dic_clst[clst]['env']).float()
-        else:
-            envs = inputs
+        envs = inputs
         count = len(self.dic_clst[clst]['Y'])
         return inputs, outputs, count, envs

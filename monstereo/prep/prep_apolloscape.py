@@ -13,7 +13,8 @@ from ..utils import correct_angle, normalize_hwl, pixel_to_camera, to_spherical 
 
 from ..network.process import preprocess_monoloco, keypoints_dropout, clear_keypoints
 
-from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, set_logger, get_iou_matches
+from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, 
+                    pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, set_logger, get_iou_matches
 
 
 
@@ -35,15 +36,13 @@ class PreprocessApolloscape:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=30,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False, surround = False):
+    def __init__(self, dir_ann, dataset, kps_3d = False, buffer=30,  dropout = 0, confidence = False, iou_min = 0.3, transformer = False):
 
         logging.basicConfig(level=logging.INFO)
 
         self.buffer = buffer
 
         self.transformer = transformer
-
-        self.surround = surround
 
         self.dropout =dropout
         
@@ -306,18 +305,13 @@ class PreprocessApolloscape:
             
             
             w, l, h = dic_boxes[index_cad][1:]
-            #pitch, yaw, roll, xc, yc, zc = dic_poses[index_cad] # Center position of the car and its orientation
-            #? New trial
             roll, pitch, yaw, xc, yc, zc= dic_poses[index_cad] # Center position of the car and its orientation
             boxes_3d_list.append([xc, yc, zc, w, l, h])
-            #print("THERE",roll, pitch, yaw)
             yaw = yaw%(np.pi*2)
-            #print("NOWIN",roll, pitch, yaw)
             if yaw > np.pi:
                 yaw = yaw - 2*np.pi
             elif yaw < -np.pi:
                 yaw = yaw + np.pi*2
-            #print("NOW",roll, pitch, yaw)
             sin, cos, _ = correct_angle(yaw, [xc, yc, zc])
             
             if True :
