@@ -18,7 +18,7 @@ import cv2
 
 from ..utils import split_training, parse_ground_truth, get_iou_matches, append_cluster, factory_file, \
     extract_stereo_matches, get_category, normalize_hwl, make_new_directory, set_logger
-from ..network.process import preprocess_pifpaf, preprocess_monoloco, keypoints_dropout, dist_angle_array
+from ..network.process import preprocess_pifpaf, preprocess_monoloco, keypoints_dropout
 from .transforms import flip_inputs, flip_labels, height_augmentation
 
 
@@ -115,14 +115,16 @@ class PreprocessKitti:
         length_keypoints = 0
         occluded_keypoints=defaultdict(list)
 
-        # self.names_gt = ('002282.txt',)
-
+        #? In case of a dropout, the processing is rolled two times
+        #? the first time with a dropout of 0 and then with a dropout on the key-points
+        #? equal to self.dropout
         if self.dropout>0:
             dropouts = [0, self.dropout]
         else:
             dropouts = [0]
 
         for dropout in dropouts:
+            #? inner loop for each dropout
             
             if len(dropouts)>=2:
                 self.logger.info("Generation of the inputs for a dropout of {}".format(dropout))
@@ -167,11 +169,8 @@ class PreprocessKitti:
                 with Image.open(path_im) as im:
                     width, height = im.size
 
-                #if cnt_files >20:
-                #    break
-
                 boxes, keypoints = preprocess_pifpaf(annotations, im_size=(width, height), min_conf=min_conf)
-                #print(keypoints)
+
                 if keypoints:
                     
 
@@ -250,7 +249,7 @@ class PreprocessKitti:
                                         mark =''
 
                                     if ii>=1:
-                                        #Differenciate the flipped and regualr ouptuts
+                                        # Change the name for the flipped and regular outputs (useful for the scene disposition)
                                         self.dic_jo[phase]['names'].append(name.split(".")[0]+"_bis"+mark+".txt")  # One image name for each annotation
                                     else:
                                         self.dic_jo[phase]['names'].append(name.split(".")[0]+mark+".txt")

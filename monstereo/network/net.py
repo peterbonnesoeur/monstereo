@@ -14,7 +14,7 @@ from einops import rearrange, repeat
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
-    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes, reorganise_lines
+    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints,  reorganise_scenes, reorganise_lines
 from .architectures import MonolocoModel, SimpleModel
 
 from .architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE, SCENE_UNIQUE
@@ -316,7 +316,6 @@ class Loco:
             except KeyError:
                 pass
         
-            print(dic_gt['car_model'])
             if verbose:
                 print("found {} matches with ground-truth".format(len(matches)))
 

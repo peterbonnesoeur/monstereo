@@ -22,11 +22,9 @@ hidden_size='1024'
 
 #lr='0.01'
 lr='0.001'
-#lr='0.0001'
-#lr='0.001'
 
 #? If the joints are already precomputed, set joints_there to 1 to remove the preprocessing step
-joints_there='1'
+joints_there='0'
 
 dropout="$3"
 

@@ -13,8 +13,9 @@ from ..utils import correct_angle, normalize_hwl, pixel_to_camera, to_spherical 
 
 from ..network.process import preprocess_monoloco, keypoints_dropout, clear_keypoints
 
-from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat, car_projection, 
-                    pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, set_logger, get_iou_matches
+from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat,car_projection,\
+                    pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, \
+                    set_logger, get_iou_matches
 
 
 
@@ -86,7 +87,8 @@ class PreprocessApolloscape:
         self.logger = set_logger(os.path.join('data', 'logs', name_out))
         self.logger.info("Preparation arguments: \nDir_ann: {} "
                          "\nprocess_mode : {} \nDropout images: {} \nConfidence keypoints:"
-                         " {} \nKeypoints 3D: {} \nTransformer: {}".format(dir_ann, process_mode, dropout, confidence, self.kps_3d, self.transformer))
+                         " {} \nKeypoints 3D: {} \nTransformer: {}".format(dir_ann, process_mode, dropout, 
+                                                                            confidence, self.kps_3d, self.transformer))
 
 
         self.path_joints = os.path.join(dir_out, 'joints-apolloscape-' + dataset + kps_3d_id + '-' + now_time + '.json')
@@ -108,12 +110,16 @@ class PreprocessApolloscape:
 
         occluded_keypoints=defaultdict(list)
         
+        #? In case of a dropout, the processing is rolled two times
+        #? the first time with a dropout of 0 and then with a dropout on the key-points
+        #? equal to self.dropout
         if self.dropout>0:
             dropouts = [0, self.dropout]
         else:
             dropouts = [0]
 
         for dropout in dropouts:
+            #? inner loop for each dropout
             
             if len(dropouts)>=2:
                 self.logger.info("Generation of the inputs for a dropout of {}".format(dropout))
@@ -143,9 +149,13 @@ class PreprocessApolloscape:
                 path_pif = os.path.join(self.dir_ann, scene_id+".jpg" + '.predictions.json')
                             
                 if os.path.isfile(path_pif):
-                    boxes_gt_list, boxes_3d_list, kps_list, ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
+                    #? extract the required inputs/outputs from the ground truth and pifpaf predictions
+                    boxes_gt_list, boxes_3d_list, kps_list, \
+                    ys_list, car_model_list  = self.extract_ground_truth_pifpaf(car_poses,camera_id, scene_id, path_pif)
+
                 else:
-                    raise ValueError("Please, provide the right pifpaf annotations for the annotations (in case you are using apolloscape mini, please preprocess the images first)")
+                    raise ValueError("Please, provide the right pifpaf annotations for the annotations" 
+                                    "(in case you are using apolloscape mini, please preprocess the images first)")
 
                 if dropout == 0: 
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
@@ -154,7 +164,6 @@ class PreprocessApolloscape:
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
 
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
-                
                 
 
                 if phase == 'val' and dropout > 0.0:
@@ -167,12 +176,16 @@ class PreprocessApolloscape:
                     
                     kps = [kps.transpose().tolist()]                    
                     
-
+                    #? perform the dropout on the key-points
                     kps, length_keypoints, occ_kps = keypoints_dropout(kps, dropout, kps_3d = self.kps_3d)
                     occluded_keypoints[phase].append(occ_kps)
-                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), confidence =self.confidence).view(-1).tolist()
+                    #? project the key-points from the pixel frame to the image frame
+                    inp = preprocess_monoloco(kps,  intrinsic_vec_to_mat(kk).tolist(), 
+                                            confidence =self.confidence).view(-1).tolist()
                     
                     if self.kps_3d:
+                        #? in case of the kps_3d option, the depth coordinates are 
+                        #? added at the end of the ys vector for the prediction part
                         keypoints = clear_keypoints(kps, 3)
                         z = (keypoints[:, 2, :]).tolist()[0]
                         ys = list(ys)
@@ -198,7 +211,7 @@ class PreprocessApolloscape:
 
                 if dropout == 0:
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
-                    # We train on the extended dataset and evaluate on the original dataset
+                    #? We train on the extended dataset and evaluate on the original dataset
 
                     self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
 
@@ -221,11 +234,20 @@ class PreprocessApolloscape:
 
         self.logger.info("\nNumber of keypoints in the skeleton : {}\n"
                           "Val: mean occluded keypoints {:.4}; STD {:.4}\n"
-                          "Train: mean occluded keypoints {:.4}; STD {:.4}\n".format(length_keypoints, mean_val, std_val, mean_train, std_train) )
+                          "Train: mean occluded keypoints {:.4}; STD {:.4}\n".format(length_keypoints, 
+                                                                                    mean_val, std_val, mean_train, std_train) )
         self.logger.info("\nOutput files:\n{}\n{}".format(self.path_names, self.path_joints))
         self.logger.info('-' * 120)
                  
     def extract_ground_truth_pifpaf(self, car_poses,camera_id, scene_id, path_pif):
+        """
+        Extract the ground truth of apolloscape and reformat it in our desired formatting.
+        Additionally, the predicted pifpaf keypoints are used with the ground truth CAD models
+        to estimate their depth.
+        This is useful for the estimation of the depth component of the keypoints triggered by --kps_3d
+        """
+
+
         with open(car_poses) as json_file:
             data = json.load(json_file) #open the pose of the cars
         dic_vertices = {}
@@ -240,9 +262,13 @@ class PreprocessApolloscape:
             name_car = car_id2name[car['car_id']].name 
             car_model = os.path.join(self.path, "car_models_json",name_car+".json")
 
-            intrinsic_matrix = intrinsic_vec_to_mat(K["Camera_"+camera_id])
+            intrinsic_matrix = intrinsic_vec_to_mat(K["Camera_"+camera_id]) # reformat the intrinsic matrix
 
-            vertices_r, triangles, _ , w, l, h = car_projection(car_model, np.array([1,1,1]), T = np.array(car['pose']),  turn_over = True, bbox = False)
+            #? extract the 3D localization from the pose of each vehicle
+            vertices_r, triangles, _ , w, l, h = car_projection(car_model, np.array([1,1,1]),
+                                                                 T = np.array(car['pose']),  turn_over = True, bbox = False)
+            
+            #? project the 3D vertices of the CAD model to the 2D space
             vertices_2d = np.matmul(vertices_r,intrinsic_matrix.transpose()) # Projected vertices on the 2D plane
             x,y = (vertices_2d[:,0]/vertices_2d[:,2], vertices_2d[:,1]/vertices_2d[:,2])
             box_gt = [np.min(x), np.min(y), np.max(x), np.max(y)]
@@ -263,7 +289,7 @@ class PreprocessApolloscape:
         keypoints_pifpaf = pifpaf_info_extractor(path_pif)
 
 
-        #? MAtch the 2d keypoints of the dataset with the keypoints from pifpaf
+        #? Match the 2d keypoints of the dataset with the keypoints from pifpaf
         boxes_kps=[]
         for index_keypoints, keypoints in enumerate(keypoints_pifpaf):
             
@@ -288,7 +314,8 @@ class PreprocessApolloscape:
             vertices_to_keypoints[index_vertice] = [index_keypoint, None]
         
 
-        #? With the keypoints now matched, extract the depth of the leypoints of the ground-truth and apply them to the keypoints
+        #? With the keypoints now matched, extract the depth of the key-points from the 
+        #? ground-truth and apply them to the keypoints
         for index_cad, (index_keypoints, count) in vertices_to_keypoints.items()   :
 
             keypoints = dic_keypoints[index_keypoints]
@@ -317,7 +344,6 @@ class PreprocessApolloscape:
             if True :
                 rtp = to_spherical([xc, yc, zc])
                 r, theta, psi = rtp # With r =d = np.linalg.norm([xc,yc,zc]) -> conversion to spherical coordinates 
-                #print("THETA, PSI, R", theta, psi, r)
                 ys_list.append([theta, psi, zc, r, h, w, l, sin, cos, yaw])
             else:
                 ys_list.append([xc, yc, zc, np.linalg.norm([xc, yc, zc]), h, w, l, sin, cos, yaw])
@@ -340,14 +366,12 @@ def factory(dataset, dir_apollo):
         
         with open(os.path.join(path, "split", "train-list.txt"), "r") as file:
             train_scenes = file.read().splitlines()
-        #scenes = [scene for scene in scenes if scene['token'] in train_scenes]
         with open(os.path.join(path, "split", "validation-list.txt"), "r") as file:
             validation_scenes = file.read().splitlines()
             
     elif dataset == '3d_car_instance_sample':
         with open(os.path.join(path,"split", "train.txt"), "r") as file:
             train_scenes = file.read().splitlines()
-        #scenes = [scene for scene in scenes if scene['token'] in train_scenes]
         with open(os.path.join(path,  "split", "val.txt"), "r") as file:
             validation_scenes = file.read().splitlines()
     
@@ -362,8 +386,7 @@ def extract_box_average(boxes_3d):
     boxes_np = np.array(boxes_3d)
     means = np.mean(boxes_np[:, 3:], axis=0)
     stds = np.std(boxes_np[:, 3:], axis=0)
-    print(means)
-    print(stds)
+
 
 
 
@@ -371,7 +394,7 @@ def extract_box_average(boxes_3d):
 def bbox_gt_extract(bbox_3d, kk):
     zc = np.mean(bbox_3d[:,2])
     
-    #take the top right corner and the bottom left corner of the bounding box in the 3D spac
+    #?take the top right corner and the bottom left corner of the bounding box in the 3D space
     corners_3d = np.array([[np.min(bbox_3d[:,0]), np.min(bbox_3d[:,1]), zc], [np.max(bbox_3d[:,0]), np.max(bbox_3d[:,1]), zc] ])
     
     box_2d = []

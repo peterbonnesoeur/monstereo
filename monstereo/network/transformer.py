@@ -227,9 +227,10 @@ class MultiHeadAttention(nn.Module):
 
     
 class Encoder(nn.Module):
-    """Encoder style self-attention layer.
-    The design is similar to the encoder mechanism described in the paper "Attention is all you need" by A. Vaswani"""
+    """Encoder style self-attention module.
+    The design is similar to the encoder mechanism described in the paper "Attention is all you need" by A. Vaswani
 
+    This class encodes the inputs and then call our encoder_layer class to use attention mechanisms"""
 
     def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1,kind = "add",
                  confidence = True, scene_disp = False, reordering = False, refining = False):
@@ -241,6 +242,7 @@ class Encoder(nn.Module):
         self.input_enc = InputEmbedding(embed_dim, n_token, kind = kind, 
                                         confidence = confidence, scene_disp = scene_disp, 
                                         reordering = reordering)
+        #? define a stack of encoder. The layers a repeated n_layers time
         self.layers = nn.ModuleList([EncoderLayer(embed_dim =embed_dim, d_attention =d_attention, n_words = n_words,
                                                 num_heads = num_heads) for _ in range(n_layers)])
 
@@ -261,6 +263,9 @@ class Encoder(nn.Module):
         return self.mask
 
 class EncoderLayer(nn.Module):
+    """instantiate a self-attention mechanism similar to the encoder in Vaswani's paper.
+    This network contains an attention step followed by a feed-forward one. """
+
     def __init__(self,
                  embed_dim=3,
                  d_attention = 3,
@@ -288,8 +293,10 @@ class EncoderLayer(nn.Module):
 
     
 class Decoder(nn.Module):
-    """Decoder style self-attention layer.
-    The design is similar to the decoder mechanism described in the paper "Attention is all you need" by A. Vaswani"""
+    """Decoder style self-attention module.
+    The design is similar to the decoder mechanism described in the paper "Attention is all you need" by A. Vaswani.
+    
+    This class encodes the inputs and then call our decoder_layer class to use attention mechanisms"""
 
     def __init__(self, n_words,n_token = 2, embed_dim=3, n_layers=3, d_attention = None, num_heads = 1, kind = "add", 
                  confidence = True, scene_disp = False, reordering = False, refining = False, embed_dim2 = None):
@@ -300,7 +307,7 @@ class Decoder(nn.Module):
             d_attention = embed_dim
         self.input_enc = InputEmbedding(embed_dim, n_token, kind = kind, 
                                         confidence = confidence, scene_disp = scene_disp, reordering = reordering)
-       
+       #? define a stack of decoder. The layers a repeated n_layers time
         self.layers = nn.ModuleList([DecoderLayer(embed_dim =embed_dim, d_attention =d_attention, n_words = n_words,
                                     num_heads = num_heads, embed_dim2 = embed_dim2)for _ in range(n_layers)])
 
@@ -321,9 +328,12 @@ class Decoder(nn.Module):
         return self.mask
 
 class DecoderLayer(nn.Module):
+    """instantiate a self-attention mechanism similar to the decoder in Vaswani's paper.
+    This network contains two attention steps followed by a feed-forward one. """
     def __init__(self,
-                 embed_dim=3,
-                 d_attention =3,
+                 embed_dim = 3,
+                 d_attention = 3,
+                 embed_dim2 = 3,
                  n_words = 20,
                  num_heads= 1,):
         super().__init__()
@@ -356,9 +366,8 @@ class DecoderLayer(nn.Module):
 
 
 class Transformer(nn.Module):
-    """"explanation of the class"""
-    #! Reformating of the transformer name is necessary
-    #! Adapting the recall for the evaluation is also a necessity
+    """"Instantiate the attention mechanism and reshape the data before going through a fully connected layer"""
+
     def __init__(self, n_base_dim, n_target_dim, n_words, n_layers = 3, kind = "add",embed_dim=512, d_attention = None, 
                  num_heads = 1, confidence = True, scene_disp = False, reordering = False, embed_dim2 = None, 
                  d_attention2 = None, n_layers2 = None, num_heads2 = None):
@@ -368,11 +377,13 @@ class Transformer(nn.Module):
         if d_attention is not None:
             assert d_attention > 0, "d_attention is negative or equal to 0"
 
-        #? Mixed case where the encoder's output is of a different size compared to the decoder's output -> this is quite experimental
-        #? But it is one of the fields that can be explored: using different data for the encoder and decoder and extract the relationships presents in those 
-        #? 2 sets individually
+        #? Mixed case where the encoder's output is of a different size compared to 
+        #? the decoder's output -> this is quite experimental
+        #? But it is one of the fields that can be explored: using different data for 
+        #? the encoder and decoder and extract the relationships that we can extract from those 2 sets
+        
         if embed_dim2 == None:
-            embed_dim2 = embed_dim # meaning
+            embed_dim2 = embed_dim 
             d_attention2 = d_attention
             n_layers2 = n_layers
             num_heads2 = num_heads
@@ -382,13 +393,15 @@ class Transformer(nn.Module):
         self.embed_dim = embed_dim
 
         self.n_target_dim = n_target_dim
-        self.encoder = Encoder(n_words, n_base_dim, embed_dim=embed_dim2, kind = kind, num_heads = num_heads2, d_attention = d_attention2,
-                               n_layers = n_layers2, confidence = confidence, scene_disp = scene_disp, reordering = reordering, refining = (embed_dim2!= embed_dim))
+        self.encoder = Encoder(n_words, n_base_dim, embed_dim=embed_dim2, kind = kind, num_heads = num_heads2, 
+                                d_attention = d_attention2, n_layers = n_layers2, confidence = confidence, 
+                                scene_disp = scene_disp, reordering = reordering, refining = (embed_dim2!= embed_dim))
 
 
-        self.decoder = Decoder(n_words, n_target_dim, embed_dim=embed_dim, kind = kind, num_heads= num_heads, d_attention = d_attention,
-                               n_layers = n_layers, confidence = confidence, scene_disp = scene_disp, reordering = reordering, 
-                               refining = (embed_dim2!= embed_dim), embed_dim2= embed_dim2)
+        self.decoder = Decoder(n_words, n_target_dim, embed_dim=embed_dim, kind = kind, num_heads= num_heads, 
+                                d_attention = d_attention, n_layers = n_layers, confidence = confidence, 
+                                scene_disp = scene_disp, reordering = reordering, 
+                                refining = (embed_dim2!= embed_dim), embed_dim2= embed_dim2)
     
         #? Flag in case, you do not want an higher number of outputs than the embeding, this will not use an additional layer
         if embed_dim == n_target_dim:
@@ -407,7 +420,11 @@ class Transformer(nn.Module):
         
         #? get the output of the encoder mechanism
         #encoder_out = self.encoder(encoder_input,  mask = encoder_mask)
+
+        #! in our case, we use only a tack of encoding layers. 
+        #! the encoder output is more a formalism in case we want to use a more "transformer-like" kind of architecture
         encoder_out, decoder_mask = self.decoder.input_enc(encoder_input, mask_off = False)
+
         if self.embed_dim != self.embed_dim2 and decoder_mask is None:
             decoder_mask = self.encoder.get_mask()
             
@@ -415,31 +432,14 @@ class Transformer(nn.Module):
         mask = self.decoder.get_mask()
 
 
-        if self.scene_disp:    
+        if self.scene_disp: # in the scene disposition the current formatting is [scene; instance_in_scene; flattened_key-points] 
             if self.end_layer:
                 return rearrange(self.linear(decoder_out), 'b n t -> (b n) t')
             else:
                 return rearrange(decoder_out, 'b n t -> (b n) t')
-        else:
+
+        else:   # in the regular disposition, the formatting is [instance, set_of_key-points, key-point_coordinates]
             if self.end_layer:
                 return rearrange(self.linear(decoder_out), 'b n t -> b (n t)')
             else:
                 return rearrange(decoder_out, 'b n t -> b (n t)')
-
-
-class PositionwiseFeedForward(nn.Module):
-
-    def __init__(self, d_hid, d_inner_hid, dropout=0.1):
-
-        super().__init__()
-        self.w_1 = nn.Linear(d_hid, d_inner_hid)
-        self.w_2 = nn.Linear(d_inner_hid ,d_hid)
-        self.layer_norm = nn.LayerNorm(d_hid)
-        self.dropout = nn.Dropout(dropout)
-    def forward(self, x):
-        output = self.w_1(x)
-        output = nn.functional.relu(output)
-        output = self.w_2(output)
-        output = self.dropout(output)
-        output = output + x
-        return self.layer_norm(output)

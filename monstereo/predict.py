@@ -28,13 +28,15 @@ def predict(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if 'mono' in args.mode:
         monoloco = Loco(model=args.model, net='monoloco_pp',
-                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence=args.confidence,
-                        transformer = args.transformer, lstm = args.lstm, scene_disp = args.scene_disp)
+                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, 
+                        kps_3d=args.kps_3d, confidence=args.confidence,transformer = args.transformer, 
+                        lstm = args.lstm, scene_disp = args.scene_disp)
       
     if 'stereo' in args.mode:
         monstereo = Loco(model=args.model, net='monstereo',
-                         device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, kps_3d=args.kps_3d, confidence = args.confidence,
-                        transformer = args.transformer, lstm = args.lstm, scene_disp = args.scene_disp)
+                        device=device, n_dropout=args.n_dropout, p_dropout=args.dropout, vehicles = args.vehicles, 
+                        kps_3d=args.kps_3d, confidence = args.confidence, transformer = args.transformer, 
+                        lstm = args.lstm, scene_disp = args.scene_disp)
       
 
     # data
@@ -188,7 +190,8 @@ def factory_outputs(args, images_outputs, output_path, pifpaf_outputs, dic_out=N
                 skeleton_painter.keypoints(ax, keypoint_sets, scores=scores)
 
     else:
-        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu'])):
+        if any((xx in args.output_types for xx in ['front', 'bird', 'combined', 'combined_3d', 
+                                                    'combined_kps', 'combined_nkps', '3d_visu'])):
             
             epistemic = False
             if args.n_dropout > 0:

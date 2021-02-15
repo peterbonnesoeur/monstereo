@@ -59,7 +59,7 @@ class GenerateKitti:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
                                     p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, 
-                                    transformer = transformer,  lstm = lstm, scene_disp = self.scene_disp, 
+                                    transformer = transformer, lstm = lstm, scene_disp = self.scene_disp, 
                                     scene_refine=self.scene_refine)
 
         if 'monoloco' in self.METHODS:

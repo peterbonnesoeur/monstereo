@@ -124,87 +124,6 @@ class SimpleModel(nn.Module):
 
                 self.w1 = nn.Linear(embed_dim*mul_output, self.linear_size) 
 
-            elif scene_refine:
-
-                #TODO : clean this part -> requires more testing before a real cleaning phase
-
-                if kind == 'cat':
-                    embed_dim = n_inp + 2 #? For an explanation, see the comment on top for the variable "kind"
-                elif kind == 'num':
-                    embed_dim = n_inp +1 #? For an explanation, see the comment on top for the variable "kind"
-                else:
-                    embed_dim = n_inp
-
-                d_attention = int(embed_dim/2) #? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
-                                               #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
-
-                #? the input is in a format ([B, N, :]) in this case, N is the variable N_words
-                n_words = int(self.stereo_size/3) if self.confidence else int(self.stereo_size/2)
-
-                self.transformer_kps=  TransformerModel(n_base_dim = n_inp, n_target_dim = embed_dim*mul_output, n_words = n_words ,kind = kind, embed_dim = embed_dim, 
-                                                        d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
-                                                        scene_disp = False)
-                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
-                                                                #? The scene_disp flag tells us if we are reasoning with scenes or keypoints 
-                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
-                                                                #? the instances depending on their height for example)
-
-                
-
-                #! Refining transformer
-
-                assert self.transformer, "Currently, the scene disposition method is only compatible with the transformer"
-                n_inp = self.output_size
-                n_inp = self.linear_size
-
-                if self.confidence:
-                    self.w1 = nn.Linear(int(self.stereo_size/3*embed_dim*mul_output), n_inp)
-                else:
-                    self.w1 = nn.Linear(int(self.stereo_size/2*embed_dim*mul_output), n_inp)
-
-                n_hidden = 1
-                
-
-                n_head = 2
-                mul_output =1
-                
-                if kind == 'cat':
-                    embed_dim = n_inp + 2
-                elif kind == 'num':
-                    embed_dim = n_inp +1
-                else:
-                    embed_dim = n_inp
-
-
-                n_target_dim = embed_dim#self.output_size
-
-                d_attention = 3#max(int(embed_dim/n_head), 6)
-
-                n_inp2 = self.stereo_size
-                #n_inp2 = 5
-                if kind == 'cat':
-                    embed_dim2 = n_inp2 + 2 #? For an explanation, see the comment on top for the variable "kind"
-                elif kind == 'num':
-                    embed_dim2 = n_inp2 + 1 #? For an explanation, see the comment on top for the variable "kind"
-                else:
-                    embed_dim2 = n_inp2
-
-                n_head2 = 3
-                d_attention2 = int(embed_dim2/n_head2) 
-                n_hidden2 = 1#self.num_stage
-
-
-                self.transformer_scene = TransformerModel(n_base_dim = n_inp, n_target_dim = n_target_dim, n_words = SCENE_INSTANCE_SIZE , kind = kind, embed_dim = embed_dim,
-                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = False, 
-                                                                scene_disp = True, embed_dim2 = embed_dim2, d_attention2 = d_attention2, n_layers2 = n_hidden2, num_heads2 = n_head2)
-
-
-                self.w_scene_refine = nn.Linear(n_target_dim, self.output_size)
-                self.w_fin_refine = nn.Linear(self.output_size, self.output_size)
-
-                self.batch_norm_refine = nn.BatchNorm1d(n_target_dim)
-
-
             else:
                 #? Embed_dim is the embeding dimension that the transformer will effectively see. Hence, it is the dimension obtained after the embedding and position embedding step
                 if kind == 'cat':
@@ -272,6 +191,7 @@ class SimpleModel(nn.Module):
         else:
             self.w1 = nn.Linear(self.stereo_size, self.linear_size)
 
+        #!Regular Monstereo/Monoloco_pp implementation
         self.batch_norm1 = nn.BatchNorm1d(self.linear_size)
 
         # Internal loop
@@ -283,7 +203,6 @@ class SimpleModel(nn.Module):
         self.w2 = nn.Linear(self.linear_size, self.linear_size)
         self.w3 = nn.Linear(self.linear_size, self.linear_size)
         self.batch_norm3 = nn.BatchNorm1d(self.linear_size)
-        self.group_norm3 =  nn.GroupNorm(self.linear_size, int(self.linear_size/100))
 
         # ------------------------Other----------------------------------------------
         # Auxiliary
@@ -302,14 +221,11 @@ class SimpleModel(nn.Module):
         
     def forward(self, x, env= None):
 
-        if (self.transformer or self.lstm):# and not self.scene_refine:
+        if (self.transformer or self.lstm):
+
+            #? Call the attnetion mechanism layers
             if self.transformer:
-                if self.scene_refine:
-                    b_size = x.size(0)
-                    x = rearrange(x, 'b n d -> (b n) d')
-                    #? first processing with the keypoint-based self-attention mechanism
-                    y = self.transformer_kps(x,x, env)
-                elif self.scene_disp:
+                if self.scene_disp:
                     #? self-attention mechanism happening at the scene level
                     y = self.transformer_scene(x,x, env)
                 else:
@@ -326,35 +242,19 @@ class SimpleModel(nn.Module):
             y = self.w1(y)
             
             aux = self.w_aux(y)
-
-            if self.scene_refine : 
-                #? Second step of the refinement process
-                #? refinement of the output with a self-attention 
-                #? mechanism at the scene level
-                #y = self.dropout(y)
-                #y = self.batch_norm1(y)
-                #y = self.relu(y)
-                y = rearrange(y, '(b n) d -> b n d', b = b_size)
-                x = rearrange(x, '(b n) d -> b n d', b = b_size)
-                y = self.transformer_scene(x, y, env)
-                
-                y = self.batch_norm_refine(y)
-                y = self.relu(y)
-                y = self.dropout(y)
-                
-
-                y = self.w_scene_refine(y)
-            else:
-                y = self.batch_norm1(y)
-                y = self.relu(y)
-                y = self.dropout(y)
-                
-                y = self.w_fin(y)
+            
+            y = self.batch_norm1(y)
+            y = self.relu(y)
+            y = self.dropout(y)
+            
+            y = self.w_fin(y)
                 
             y = torch.cat((y, aux), dim=1)
 
             return y
         else:
+
+            #! This is the regular monoloco_pp/monstereo network
             y = self.w1(x)
 
             y = self.batch_norm1(y)
