@@ -23,7 +23,7 @@ from collections import defaultdict
 class HypTuning:
 
     def __init__(self, joints, epochs, monocular, dropout, multiplier=1, r_seed=7, vehicles=False, kps_3d = False, dataset = 'kitti', 
-                confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False, scene_refine = False, dir_ann = None):
+                confidence = False, transformer = False, lstm = False, scene_disp = False, scene_refine = False, dir_ann = None):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -39,7 +39,6 @@ class HypTuning:
 
         self.confidence = confidence
         self.transformer = transformer
-        self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
         self.dir_ann = dir_ann
@@ -135,7 +134,7 @@ class HypTuning:
                                sched_gamma=sched_gamma, hidden_size=hidden_size, n_stage=n_stage, num_heads =num_heads,
                                save=False, print_loss=False, r_seed=self.r_seed, vehicles=self.vehicles, kps_3d = self.kps_3d,
                                dataset = self.dataset, confidence= self.confidence, transformer = self.transformer, 
-                               surround = self.surround, lstm = self.lstm, scene_disp =self.scene_disp, scene_refine = self.scene_refine)
+                            lstm = self.lstm, scene_disp =self.scene_disp, scene_refine = self.scene_refine)
 
             best_epoch = training.train()
             dic_err, model = training.evaluate()
@@ -153,10 +152,10 @@ class HypTuning:
                                 "sched_gamma={}, hidden_size={}, n_stage={},\n n_heads={},\n"
                                 "save=False, print_loss=False, r_seed={}, vehicles={}, kps_3d = {},\n"
                                 "dataset = {}, confidence= {}, transformer = {}, \n"
-                                "surround = {}, lstm = {}, scene_disp ={}, scene_refine = {} )\n"
+                                "lstm = {}, scene_disp ={}, scene_refine = {} )\n"
                                 .format(self.joints,self.num_epochs,bs, self.monocular, self.dropout, lr, sched_step,
                                 sched_gamma, hidden_size, n_stage, num_heads, self.r_seed,self.vehicles, self.kps_3d, self.dataset, self.confidence,
-                                self.transformer, self.surround, self.lstm, self.scene_disp, self.scene_refine))
+                                self.transformer,  self.lstm, self.scene_disp, self.scene_refine))
 
                 if self.monocular:
                     model_stereo = "nope"
@@ -168,7 +167,7 @@ class HypTuning:
 
                 kitti_txt = GenerateKitti(model_stereo, self.dir_ann, p_dropout=0, n_dropout=0,
                                           hidden_size=hidden_size, vehicles = self.vehicles, model_mono = model_mono,
-                                          confidence = self.confidence, transformer = self.transformer, surround = self.surround,
+                                          confidence = self.confidence, transformer = self.transformer, 
                                           lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
 
                 kitti_txt.run()

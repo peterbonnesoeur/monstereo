@@ -40,7 +40,7 @@ class Trainer:
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=4,  num_heads = 3,r_seed=7, n_samples=100,
                  monocular=False, save=False, print_loss=True, vehicles =False, kps_3d = False, dataset ='kitti', 
-                 confidence = False, transformer = False, surround = False, lstm = False, scene_disp = False,
+                 confidence = False, transformer = False,  lstm = False, scene_disp = False,
                  scene_refine = False):
         """
         Initialize directories, load the data and parameters for the training
@@ -82,7 +82,6 @@ class Trainer:
 
         self.confidence = confidence
         self.transformer = transformer
-        self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
         self.scene_refine = scene_refine
@@ -109,8 +108,6 @@ class Trainer:
         if self.lstm:
             self.identifier+="-lstm"
 
-        if self.surround:
-            self.identifier+="-surround"
 
         if self.kps_3d:
             self.identifier+="-kps_3d"
@@ -233,11 +230,11 @@ class Trainer:
                              "\nmonocular: {} \nlearning rate: {} \nscheduler step: {} \nscheduler gamma: {}  "
                              "\ninput_size: {} \noutput_size: {}\nhidden_size: {} \nn_stages: {} "
                              "\nr_seed: {} \nlambdas: {} \ninput_file: {} \nvehicles: {} \nKeypoints 3D: {} "
-                             "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \nTransformer: {} \nSurround: {}"
+                             "\nprocess_mode: {} \ndropout_images: {} \nConfidence_training: {} \nTransformer: {} "
                              " \nLSTM: {} \nScene disp: {} \nScene refine: {}"
                              .format(epochs, bs, dropout, self.monocular, lr, sched_step, sched_gamma, input_size,
                                      output_size, hidden_size, n_stage, r_seed, self.lambdas, self.joints, vehicles, 
-                                     kps_3d, process_mode, dropout_images, self.confidence,self.transformer, self.surround,
+                                     kps_3d, process_mode, dropout_images, self.confidence,self.transformer, 
                                      self.lstm, self.scene_disp, self.scene_refine))
         else:
             logging.basicConfig(level=logging.INFO)
@@ -246,9 +243,9 @@ class Trainer:
         #! For now on, the transformer tag does not do anything to the Keypoint dataset loader
         # Dataloader
         self.dataloaders = {phase: DataLoader(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer =self.transformer, 
-                            surround = self.surround, scene_disp = self.scene_disp),batch_size=bs, shuffle=True) for phase in ['train', 'val']} 
+                            scene_disp = self.scene_disp),batch_size=bs, shuffle=True) for phase in ['train', 'val']} 
         self.dataset_sizes = {phase: len(KeypointsDataset(self.joints, phase=phase, kps_3d=self.kps_3d, transformer = self.transformer, 
-                            surround = self.surround, scene_disp = self.scene_disp)) for phase in ['train', 'val']}
+                            scene_disp = self.scene_disp)) for phase in ['train', 'val']}
 
         # Define the model
         self.logger.info('Sizes of the dataset: {}'.format(self.dataset_sizes))
@@ -256,7 +253,7 @@ class Trainer:
         
         self.model = SimpleModel(input_size=input_size, output_size=output_size, linear_size=hidden_size,
                                 p_dropout=dropout, num_stage=self.n_stage, num_heads = self.num_heads, device=self.device, transformer = self.transformer, confidence = self.confidence,
-                                surround =self.surround, lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
+                                lstm = self.lstm, scene_disp = self.scene_disp, scene_refine = self.scene_refine)
         self.model.to(self.device)
         
         print(">>> model params: {:.3f}M".format(sum(p.numel() for p in self.model.parameters()) / 1000000.0))
@@ -322,20 +319,17 @@ class Trainer:
                         if epoch == 0:
                             dim[phase].append(len(labels))
                     labels = labels.to(self.device)
-                    if self.surround:
-                        envs = envs.to(self.device)
+
 
                     
                     with torch.set_grad_enabled(phase == 'train'):
                         if phase == 'train':
-                            if self.surround:
-                                outputs = self.model(inputs, env = envs)
-                            else:
-                                outputs = self.model(inputs)
-                                if self.scene_disp:
-                                    #? Retrieve the non padded outputs -> only train the network for the relevant inputs
-                                    #? despite the conditionnal formatting and the padding
-                                    outputs = outputs[mask]
+
+                            outputs = self.model(inputs)
+                            if self.scene_disp:
+                                #? Retrieve the non padded outputs -> only train the network for the relevant inputs
+                                #? despite the conditionnal formatting and the padding
+                                outputs = outputs[mask]
                             loss, loss_values = self.mt_loss(outputs, labels, phase=phase)
                             self.optimizer.zero_grad() 
 
@@ -346,14 +340,12 @@ class Trainer:
                             
 
                         else:
-                            if self.surround:
-                                outputs = self.model(inputs, env = envs)
-                            else:
-                                outputs = self.model(inputs)
-                                if self.scene_disp:
-                                    #? Retrieve the non padded outputs -> only train the network for the relevant inputs
-                                    #? despite the conditionnal formatting and the padding
-                                    outputs = outputs[mask]
+
+                            outputs = self.model(inputs)
+                            if self.scene_disp:
+                                #? Retrieve the non padded outputs -> only train the network for the relevant inputs
+                                #? despite the conditionnal formatting and the padding
+                                outputs = outputs[mask]
                         with torch.no_grad():
                             loss_eval, loss_values_eval = self.mt_loss(outputs, labels, phase='val')
                             self.epoch_logs(phase, loss_eval, loss_values_eval, inputs, running_loss)
@@ -414,7 +406,7 @@ class Trainer:
         self.errors = defaultdict(list)
         self.errors_kps = defaultdict(list)
         dic_err['val']['sigmas'] = [0.] * len(self.tasks)
-        dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d, transformer =self.transformer, surround = self.surround, scene_disp = self.scene_disp)
+        dataset = KeypointsDataset(self.joints, phase='val', kps_3d = self.kps_3d, transformer =self.transformer, scene_disp = self.scene_disp)
         size_eval = len(dataset)
         final_size = 0
         if self.scene_disp:
@@ -457,8 +449,6 @@ class Trainer:
                     #? Remove the pads on the labels
                     labels = labels[mask]
                 labels = labels.to(self.device)
-                if self.surround:
-                    envs = envs.to(self.device)
                 
                 # Debug plot for input-output distributions
                 if debug:
@@ -482,16 +472,10 @@ class Trainer:
                     if inputs is None:
                         continue
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
-                    if self.surround:
-                        envs = envs.to(self.device)
 
-                    # Forward pass on each cluster
-                    if self.surround:
-                        outputs = self.model(inputs, envs)
-                    else:
-                        outputs = self.model(inputs)
-                        if self.scene_disp:
-                            outputs= self.model.get_output(inputs, outputs)
+                    outputs = self.model(inputs)
+                    if self.scene_disp:
+                        outputs= self.model.get_output(inputs, outputs)
 
                     self.compute_stats(outputs, labels, dic_err['val'], size_eval, clst=clst)
                     self.cout_stats(dic_err['val'], size_eval, clst=clst)

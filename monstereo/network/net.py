@@ -14,7 +14,7 @@ from einops import rearrange, repeat
 
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
-    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints, dist_angle_array, reorganise_scenes, reorganise_lines
+    filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints,  reorganise_scenes, reorganise_lines
 from .architectures import MonolocoModel, SimpleModel
 
 from .architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE, SCENE_UNIQUE
@@ -27,14 +27,13 @@ class Loco:
     N_SAMPLES = 100
 
     def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, 
-                vehicles = False, kps_3d = False, confidence=False, transformer = False, surround = False, 
+                vehicles = False, kps_3d = False, confidence=False, transformer = False, 
                 lstm = False, scene_disp = False, scene_refine = False):
         self.net = net
         self.vehicles = vehicles
         self.kps_3d = kps_3d
         self.confidence = confidence
         self.transformer = transformer
-        self.surround = surround
         self.lstm = lstm
         self.scene_disp = scene_disp
         self.scene_refine = scene_refine
@@ -103,7 +102,7 @@ class Loco:
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
                                          linear_size=linear_size, device=self.device, transformer = transformer, 
-                                         confidence = self.confidence, surround = self.surround, lstm = self.lstm, 
+                                         confidence = self.confidence, lstm = self.lstm, 
                                          scene_disp = self.scene_disp, scene_refine = self.scene_refine)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
@@ -146,83 +145,80 @@ class Loco:
                 else:    
                     inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
 
-                if self.surround:
-                    envs = dist_angle_array(inputs)
-                    outputs = self.model(inputs, envs)
-                else:
-                    if not SCENE_LINE:
-                        if len(inputs.size())<3 and self.scene_disp: 
-                            inputs = inputs.unsqueeze(0)
-                            pad_size = inputs.size(1)
-                            pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
-                            inputs = torch.cat((inputs, pad), dim = 1)
+
+                if not SCENE_LINE:
+                    if len(inputs.size())<3 and self.scene_disp: 
+                        inputs = inputs.unsqueeze(0)
+                        pad_size = inputs.size(1)
+                        pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
+                        inputs = torch.cat((inputs, pad), dim = 1)
+                        
+
+                        #? reorganise the inputs just as it was done during the training session (no influence for instance-based algorithm)
+                        indices = torch.arange(0, inputs.size(1)).to(inputs.device)
+                        test = reorganise_scenes(inputs[0])
+
+                        if test is not None:
+                            indices[:len(test)] = test
+                        inputs = inputs[:, indices]
                             
+                    outputs = self.model(inputs)
+                    if self.scene_disp:
+                        #?Reverse the order of the output to match the initial formating
+                        outputs = outputs[torch.sort(indices)[-1],:][:pad_size]
 
-                            #? reorganise the inputs just as it was done during the training session (no influence for instance-based algorithm)
-                            indices = torch.arange(0, inputs.size(1)).to(inputs.device)
-                            test = reorganise_scenes(inputs[0])
+                else:
+                    #? in this context, we are proceeding in two steps:
+                    #! - the scene is separated into lines
+                    #! - each line is reordered by a chosen parameter (width, height, pos)
+                    #! - the model process the input
+                    #! - the lines are reordered to their previous ordering 
+                    #! - The scene is recreated by reorganising the lines   
+                    if len(inputs.size())<3 and self.scene_disp:
 
+                        inputs = inputs.unsqueeze(0)
+                        pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
+                        inputs = torch.cat((inputs, pad), dim = 1)
+
+                        if SCENE_LINE:
+                            inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE , unique = SCENE_UNIQUE)
+                        else:
+                            indices_match = torch.Tensor([0])
+
+                        outputs = None
+
+                        pads = None
+                        
+                        for scene in inputs:
+                            #? pick up each scene individually                                
+                            #? Memorize the real inputs from each "scene" in an image
+                            if pads is None:
+                                pads = (torch.sum(scene, dim = -1) != 0).unsqueeze(0)
+                            else:
+                                pads =torch.cat((pads, (torch.sum(scene, dim = -1) != 0).unsqueeze(0)), dim = 0)
+
+                            scene= scene.unsqueeze(0)
+                            #? Order the scene by a defined order () width, height, xpos, ypos)
+                            indices = torch.arange(0, scene.size(1)).to(inputs.device)
+                            test = reorganise_scenes(scene[0])
                             if test is not None:
                                 indices[:len(test)] = test
-                            inputs = inputs[:, indices]
-                                
-                        outputs = self.model(inputs)
-                        if self.scene_disp:
-                            #?Reverse the order of the output to match the initial formating
-                            outputs = outputs[torch.sort(indices)[-1],:][:pad_size]
+                            scene = scene[:,indices]
 
-                    else:
-                        #? in this context, we are proceeding in two steps:
-                        #! - the scene is separated into lines
-                        #! - each line is reordered by a chosen parameter (width, height, pos)
-                        #! - the model process the input
-                        #! - the lines are reordered to their previous ordering 
-                        #! - The scene is recreated by reorganising the lines   
-                        if len(inputs.size())<3 and self.scene_disp:
+                            pre_outputs= self.model(scene)
+                            #? re- Order the scene by a defined order () width, height, xpos, ypos)
+                            pre_outputs = pre_outputs[torch.sort(indices)[-1],:].unsqueeze(0)
 
-                            inputs = inputs.unsqueeze(0)
-                            pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
-                            inputs = torch.cat((inputs, pad), dim = 1)
-
-                            if SCENE_LINE:
-                                inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE , unique = SCENE_UNIQUE)
+                            #? merge the lines together
+                            if outputs is None:
+                                outputs = pre_outputs
                             else:
-                                indices_match = torch.Tensor([0])
+                                outputs =torch.cat((outputs, pre_outputs), dim = 0)
 
-                            outputs = None
-
-                            pads = None
-                            
-                            for scene in inputs:
-                                #? pick up each scene individually                                
-                                #? Memorize the real inputs from each "scene" in an image
-                                if pads is None:
-                                    pads = (torch.sum(scene, dim = -1) != 0).unsqueeze(0)
-                                else:
-                                    pads =torch.cat((pads, (torch.sum(scene, dim = -1) != 0).unsqueeze(0)), dim = 0)
-
-                                scene= scene.unsqueeze(0)
-                                #? Order the scene by a defined order () width, height, xpos, ypos)
-                                indices = torch.arange(0, scene.size(1)).to(inputs.device)
-                                test = reorganise_scenes(scene[0])
-                                if test is not None:
-                                    indices[:len(test)] = test
-                                scene = scene[:,indices]
-
-                                pre_outputs= self.model(scene)
-                                #? re- Order the scene by a defined order () width, height, xpos, ypos)
-                                pre_outputs = pre_outputs[torch.sort(indices)[-1],:].unsqueeze(0)
-
-                                #? merge the lines together
-                                if outputs is None:
-                                    outputs = pre_outputs
-                                else:
-                                    outputs =torch.cat((outputs, pre_outputs), dim = 0)
-
-                            #? Reorder the lines to obtain the previous ordering of the scene
-                            outputs = outputs[pads][torch.sort(indices_match)[-1], :]
-                        else:
-                            outputs = self.model(inputs)
+                        #? Reorder the lines to obtain the previous ordering of the scene
+                        outputs = outputs[pads][torch.sort(indices_match)[-1], :]
+                    else:
+                        outputs = self.model(inputs)
 
                 dic_out = extract_outputs(outputs , kps_3d = self.kps_3d)
 
@@ -320,7 +316,6 @@ class Loco:
             except KeyError:
                 pass
         
-            print(dic_gt['car_model'])
             if verbose:
                 print("found {} matches with ground-truth".format(len(matches)))
 
