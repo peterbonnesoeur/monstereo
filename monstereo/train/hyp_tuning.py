@@ -7,6 +7,7 @@ import logging
 import random
 import datetime
 
+from collections import defaultdict
 import torch
 import numpy as np
 import pandas as pd
@@ -16,7 +17,6 @@ from ..eval import EvalKitti, GenerateKitti
 
 from ..utils import set_logger
 
-from collections import defaultdict
 
 
 

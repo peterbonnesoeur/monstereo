@@ -1,10 +1,8 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-import math
 import numpy as np
 from einops import rearrange, repeat
 
@@ -133,7 +131,7 @@ class PositionalEncoding(nn.Module):
     "word" in a "sentence" while drawing relationships between the words"""
 
     def __init__(self, d_model, dropout=0.1, max_len=5000, kind = "add"):
-        super(PositionalEncoding, self).__init__()
+        super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.kind = kind
         
@@ -315,7 +313,7 @@ class Decoder(nn.Module):
 
         
         if mask is not None:
-           out, _ = self.input_enc(x,  mask_off = False)
+            out, _ = self.input_enc(x,  mask_off = False)
         else:
             out, mask = self.input_enc(x,  mask_off = False)
 
@@ -381,7 +379,7 @@ class Transformer(nn.Module):
         #? the decoder's output -> this is quite experimental
         #? But it is one of the fields that can be explored: using different data for 
         #? the encoder and decoder and extract the relationships that we can extract from those 2 sets
-        
+
         if embed_dim2 == None:
             embed_dim2 = embed_dim 
             d_attention2 = d_attention

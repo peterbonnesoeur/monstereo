@@ -87,14 +87,14 @@ class MultiTaskLoss(torch.nn.Module):
 class CompositeLoss(torch.nn.Module):
 
     def __init__(self, tasks, kps_3d = False):
-        super(CompositeLoss, self).__init__()
+        super().__init__()
         self.tasks = tasks
         self.kps_3d = kps_3d
         if self.kps_3d:
             self.tasks = tuple(list(self.tasks[:-1])+['z_kp'+str(i) for i in range (24)])
         self.multi_loss_tr = {task: (LaplacianLoss() if task == 'd'
                                      else (nn.BCEWithLogitsLoss() if task in ('aux', )
-                                        else nn.L1Loss()if "z_kp" in task 
+                                        else nn.L1Loss()if "z_kp" in task
                                            else nn.L1Loss())) for task in self.tasks}
 
 
@@ -125,7 +125,7 @@ class CompositeLoss(torch.nn.Module):
 class LaplacianLoss(torch.nn.Module):
     """1D Gaussian with std depending on the absolute distance"""
     def __init__(self, size_average=True, reduce=True, evaluate=False):
-        super(LaplacianLoss, self).__init__()
+        super().__init__()
         self.size_average = size_average
         self.reduce = reduce
         self.evaluate = evaluate
@@ -141,7 +141,7 @@ class LaplacianLoss(torch.nn.Module):
         eps = 0.01  # To avoid 0/0 when no uncertainty
         mu, si = mu_si[:, 0:1], mu_si[:, 1:2]
         #print("MU SI ",mu,si)
-        #? Technique to allow the computation to happen even with xx == 0 
+        #? Technique to allow the computation to happen even with xx == 0
         mask = (xx==0)
         xx[mask]+=1e-24
         norm = 1 - mu / xx  # Relative
@@ -172,7 +172,7 @@ class GaussianLoss(torch.nn.Module):
     """1D Gaussian with std depending on the absolute distance
     """
     def __init__(self, device, size_average=True, reduce=True, evaluate=False):
-        super(GaussianLoss, self).__init__()
+        super().__init__()
         self.size_average = size_average
         self.reduce = reduce
         self.evaluate = evaluate

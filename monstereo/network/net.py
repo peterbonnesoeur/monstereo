@@ -9,10 +9,14 @@ import math
 import logging
 from collections import defaultdict
 
-import torch
-from einops import rearrange, repeat
+import numpy as np
 
-from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance, keypoint_projection
+import torch
+
+from ..utils import mask_joint_disparity
+
+from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, \
+                    xyz_from_distance
 from .process import preprocess_monstereo, preprocess_monoloco, extract_outputs, extract_outputs_mono,\
     filter_outputs, cluster_outputs, unnormalize_bi, clear_keypoints,  reorganise_scenes, reorganise_lines
 from .architectures import MonolocoModel, SimpleModel
@@ -26,8 +30,8 @@ class Loco:
     LINEAR_SIZE_MONO = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024, 
-                vehicles = False, kps_3d = False, confidence=False, transformer = False, 
+    def __init__(self, model, net='monstereo', device=None, n_dropout=0, p_dropout=0.2, linear_size=1024,
+                vehicles = False, kps_3d = False, confidence=False, transformer = False,
                 lstm = False, scene_disp = False, scene_refine = False):
         self.net = net
         self.vehicles = vehicles
@@ -60,7 +64,7 @@ class Loco:
                     output_size = 24+10
                 else:
                     output_size = 10
-            
+
         elif self.net == 'monoloco_p':
             input_size = 34
             output_size = 9
@@ -101,8 +105,8 @@ class Loco:
                                            output_size=output_size)
             else:
                 self.model = SimpleModel(p_dropout=p_dropout, input_size=input_size, output_size=output_size,
-                                         linear_size=linear_size, device=self.device, transformer = transformer, 
-                                         confidence = self.confidence, lstm = self.lstm, 
+                                         linear_size=linear_size, device=self.device, transformer = transformer,
+                                         confidence = self.confidence, lstm = self.lstm,
                                          scene_disp = self.scene_disp, scene_refine = self.scene_refine)
 
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
@@ -139,29 +143,30 @@ class Loco:
                 if self.transformer and not self.confidence:
                     #? In this case, we still put the confidence to True
                     #? the reason is that the confidence is used by the network to predict the masks.
-                    #? Within the transformer_scene.py, a function is then called depending on wether 
-                    #? or not the confidence is desired, to remove the confidence term
+                    #? Within the transformer_scene.py, a function is then called depending on wether
+                    #? or not the confidence is desired, to remove the confidence term.
                     inputs = preprocess_monoloco(keypoints, kk, confidence = True)
                 else:    
                     inputs = preprocess_monoloco(keypoints, kk, confidence = self.confidence)
 
 
                 if not SCENE_LINE:
-                    if len(inputs.size())<3 and self.scene_disp: 
+                    if len(inputs.size())<3 and self.scene_disp:
                         inputs = inputs.unsqueeze(0)
                         pad_size = inputs.size(1)
                         pad = torch.zeros([1,SCENE_INSTANCE_SIZE-inputs.size(1) ,inputs.size(-1)]).to(inputs.device)
                         inputs = torch.cat((inputs, pad), dim = 1)
-                        
 
-                        #? reorganise the inputs just as it was done during the training session (no influence for instance-based algorithm)
+
+                        #? reorganise the inputs just as it was done during the training session
+                        # (no influence for instance-based algorithm)
                         indices = torch.arange(0, inputs.size(1)).to(inputs.device)
                         test = reorganise_scenes(inputs[0])
 
                         if test is not None:
                             indices[:len(test)] = test
                         inputs = inputs[:, indices]
-                            
+
                     outputs = self.model(inputs)
                     if self.scene_disp:
                         #?Reverse the order of the output to match the initial formating
@@ -172,8 +177,8 @@ class Loco:
                     #! - the scene is separated into lines
                     #! - each line is reordered by a chosen parameter (width, height, pos)
                     #! - the model process the input
-                    #! - the lines are reordered to their previous ordering 
-                    #! - The scene is recreated by reorganising the lines   
+                    #! - the lines are reordered to their previous ordering
+                    #! - The scene is recreated by reorganising the lines
                     if len(inputs.size())<3 and self.scene_disp:
 
                         inputs = inputs.unsqueeze(0)
@@ -181,16 +186,17 @@ class Loco:
                         inputs = torch.cat((inputs, pad), dim = 1)
 
                         if SCENE_LINE:
-                            inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE , unique = SCENE_UNIQUE)
+                            inputs, indices_match = reorganise_lines(inputs, offset = BOX_INCREASE,
+                                                                    unique = SCENE_UNIQUE)
                         else:
                             indices_match = torch.Tensor([0])
 
                         outputs = None
 
                         pads = None
-                        
+
                         for scene in inputs:
-                            #? pick up each scene individually                                
+                            #? pick up each scene individually                           
                             #? Memorize the real inputs from each "scene" in an image
                             if pads is None:
                                 pads = (torch.sum(scene, dim = -1) != 0).unsqueeze(0)
@@ -229,9 +235,11 @@ class Loco:
                     keypoints_r = keypoints[0:1, :].clone()
 
                 if self.transformer and not self.confidence:
-                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =True)
+                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, 
+                                                    confidence =True)
                 else:    
-                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, confidence =self.confidence)
+                    inputs, _ = preprocess_monstereo(keypoints, keypoints_r, kk, self.vehicles, 
+                                                    confidence =self.confidence)
                 outputs = self.model(inputs)
 
                 outputs = cluster_outputs(outputs, keypoints_r.shape[0])
@@ -280,7 +288,8 @@ class Loco:
         return varss
 
     @staticmethod
-    def post_process(dic_in, boxes, keypoints, kk, dic_gt=None, iou_min=0.3, reorder=True, verbose=False, kps_3d = False):
+    def post_process(dic_in, boxes, keypoints, kk, dic_gt=None, iou_min=0.3, reorder=True,
+                    verbose=False, kps_3d = False):
         """Post process monoloco to output final dictionary with all information for visualizations"""
 
         dic_out = defaultdict(list)
@@ -289,15 +298,16 @@ class Loco:
 
         if kps_3d:
             kps = clear_keypoints(torch.tensor(keypoints))
-            
-            z_kps_pred = torch.tensor(dic_in['z_kps']).unsqueeze(2).repeat(1,1,3) # Z component repeated for the projection
-            
-            
+            # Z component repeated for the projection
+            z_kps_pred = torch.tensor(dic_in['z_kps']).unsqueeze(2).repeat(1,1,3) 
+
+
+
             res = pixel_to_camera(kps[:, 0:2, :], kk, 1)
 
 
             res = res*z_kps_pred
-            
+
             conf_kps = kps[:,2,:].tolist()  #select the  detected keypoints with a conf > 0
 
 
@@ -315,7 +325,7 @@ class Loco:
                 car_model = dic_gt['car_model']
             except KeyError:
                 pass
-        
+
             if verbose:
                 print("found {} matches with ground-truth".format(len(matches)))
 
@@ -379,8 +389,7 @@ class Loco:
                 dic_out['angles_egocentric'].append(float(dic_in['yaw'][1][idx]))
             except KeyError:
                 continue
-            
-            
+
 
             # Only for MonStereo
             try:
@@ -406,12 +415,10 @@ class Loco:
 
 def median_disparity(dic_out, keypoints, keypoints_r, mask):
     """
-    Ablation study: whenever a matching is found, compute depth by median disparity instead of using MonSter
-    Filters are applied to masks nan joints and remove outlier disparities with iqr
+    Ablation study: whenever a matching is found, compute depth by median disparity instead of using MonStereo
+    Filters are applied to masks nan joints and remove outlier disparities with it
     The mask input is used to filter the all-vs-all approach
     """
-    import numpy as np
-    from ..utils import mask_joint_disparity
 
     keypoints = keypoints.cpu().numpy()
     keypoints_r = keypoints_r.cpu().numpy()

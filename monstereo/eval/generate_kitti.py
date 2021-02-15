@@ -29,8 +29,8 @@ class GenerateKitti:
     METHODS = ['monoloco_pp']
     #METHODS = ['monstereo']
 
-    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False, 
-                model_mono = None, confidence = False, transformer = False,  lstm = False, 
+    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, hidden_size=1024, vehicles = False,
+                model_mono = None, confidence = False, transformer = False,  lstm = False,
                 scene_disp = False, scene_refine = False):
 
         # Load monoloco
@@ -42,8 +42,9 @@ class GenerateKitti:
         if self.scene_refine:
             self.scene_disp = True
         if 'monstereo' in self.METHODS:
-            self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, p_dropout=p_dropout,
-                                linear_size=hidden_size, vehicles=vehicles, confidence =confidence, transformer = transformer,
+            self.monstereo = Loco(model=model, net='monstereo', device=device, n_dropout=n_dropout, 
+                                p_dropout=p_dropout, linear_size=hidden_size, vehicles=vehicles,
+                                confidence =confidence, transformer = transformer,
                                 lstm = lstm, scene_disp = scene_disp)
         
 
@@ -58,8 +59,8 @@ class GenerateKitti:
             else:
                 model_mono_pp = None
             self.monoloco_pp = Loco(model=model_mono_pp, net='monoloco_pp', device=device, n_dropout=n_dropout,
-                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence, 
-                                    transformer = transformer, lstm = lstm, scene_disp = self.scene_disp, 
+                                    p_dropout=p_dropout, vehicles = vehicles, linear_size=hidden_size, confidence = confidence,
+                                    transformer = transformer, lstm = lstm, scene_disp = self.scene_disp,
                                     scene_refine=self.scene_refine)
 
         if 'monoloco' in self.METHODS:
@@ -110,14 +111,14 @@ class GenerateKitti:
             make_new_directory(dir_out[key])
             print("Created empty output directory for {}".format(key))
 
-        
+
         create_empty_files(dir_out, self.METHODS)
 
         # Run monoloco over the list of images
-        
+
         for i, basename in enumerate(self.set_basename):
 
-            
+
             path_calib = os.path.join(self.dir_kk, basename + '.txt')
             annotations, kk, tt = factory_file(path_calib, self.dir_ann, basename)
 
@@ -134,7 +135,7 @@ class GenerateKitti:
             #min_conf = 0.35*min_conf
             boxes, keypoints = preprocess_pifpaf(annotations, im_size=(width, height), min_conf=min_conf)
             cat = get_category(keypoints, os.path.join(self.dir_byc, basename + '.json'))
-            
+
             if keypoints:
                 annotations_r, _, _ = factory_file(path_calib, self.dir_ann, basename, mode='right')
                 _, keypoints_r = preprocess_pifpaf(annotations_r, im_size=(width, height), min_conf=min_conf)
@@ -167,7 +168,8 @@ class GenerateKitti:
 
                 for key in self.METHODS:
                     path_txt = {key: os.path.join(dir_out[key], basename + '.txt')}
-                    save_txts(path_txt[key], boxes, all_outputs[key], params, mode=key, cat=cat, vehicles = self.vehicles)
+                    save_txts(path_txt[key], boxes, all_outputs[key], params, mode=key, cat=cat,
+                            vehicles = self.vehicles)
 
                 # STEREO BASELINES
                 if self.baselines:
@@ -179,7 +181,8 @@ class GenerateKitti:
                         all_inputs[key] = boxes
 
                         path_txt[key] = os.path.join(dir_out[key], basename + '.txt')
-                        save_txts(path_txt[key], all_inputs[key], all_outputs[key], params, mode='baseline', cat=cat, vehicles = self.vehicles)
+                        save_txts(path_txt[key], all_inputs[key], all_outputs[key], params,
+                                    mode='baseline', cat=cat, vehicles = self.vehicles)
 
         print("\nSaved in {} txt {} annotations. Not found {} images".format(cnt_file, cnt_ann, cnt_no_file))
 
@@ -319,7 +322,7 @@ def create_empty_files(dir_out, methods_2 = ['monoloco_pp', 'monstereo']):
             # If the file exits, rewrite in new folder, otherwise create empty file
             read_and_rewrite(path_orig, path)
 
-    
+
     for method in methods_2:
         for i in range(NUM_ANNOTATIONS):
             name = "0" * (6 - len(str(i))) + str(i) + '.txt'
