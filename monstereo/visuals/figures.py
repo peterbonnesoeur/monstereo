@@ -3,6 +3,7 @@
 import math
 import itertools
 import os
+import pandas as pd
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,13 +13,15 @@ from ..utils import get_task_error, get_pixel_error
 
 DIR_OUT ='docs/eval'
 
-def show_results(dic_stats, our_methods, clusters, show=False, save=False, stereo=True, identifier='', vehicles = False):
+def show_results(dic_stats, our_methods, clusters, show=False, save=False,
+                 stereo=True, identifier='', vehicles = False):
     """
-    Visualize error as function of the distance and compare it with target errors based on human height analyses
+    Visualize error as function of the distance and compare it with target 
+    errors based on human height analyses
     """
 
     dir_out = DIR_OUT+identifier
-    
+
     phase = 'test'
     x_min = 3
     if vehicles:
@@ -186,12 +189,12 @@ def show_method(save, identifier=''):
 
 
 def show_box_plot(dic_errors, clusters, show=False, save=False, identifier=''):
-    
-    import pandas as pd
+
     dir_out = DIR_OUT+identifier
     excl_clusters = ['all', 'easy', 'moderate', 'hard']
     clusters = [int(clst) for clst in clusters if clst not in excl_clusters]
-    methods = ('monstereo', 'pseudo-lidar', '3dop', 'monoloco_pp', 'monodis', 'm3d', 'monogrnet', 'smoke')
+    methods = ('monstereo', 'pseudo-lidar', '3dop', 'monoloco_pp', 'monodis', 'm3d', 
+                'monogrnet', 'smoke')
     y_min = 0
     y_max = 25  # 18 for the other
     xxs = get_distances(clusters)
@@ -306,8 +309,8 @@ def get_percentile(dist_gmm):
 
 def printing_styles(stereo):
     if stereo:
-        style = {"labels": ['3DOP', 'MonoGRNet', 'Monoloco++', 'MonoDis', 'Pseudo-Lidar', 'MonStereo', 'Mono3D', 'Smoke'],
-                 "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis', 'pseudo-lidar', 'monstereo', 'm3d', 'smoke'],
+        style = {"labels": ['3DOP', 'MonoGRNet','Monoloco++','MonoDis','Pseudo-Lidar','MonStereo','Mono3D', 'Smoke'],
+                 "methods": ['3dop', 'monogrnet', 'monoloco_pp', 'monodis','pseudo-lidar', 'monstereo','m3d','smoke'],
                  "mks": ['s', 'p', 'o', 'v', '*', '^', '.', '^'],
                  "mksizes": [6, 6, 7, 6, 6, 6, 6,6], "lws": [1.2, 1.2, 1.5, 1.2, 1.2, 1.2, 1.2, 1.2],
                  "colors": ['gold', 'skyblue', 'darkgreen', 'pink', 'darkorange', 'b', 'olive', 'darkblue'],

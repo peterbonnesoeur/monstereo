@@ -1,10 +1,9 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
+from einops import rearrange
 from .transformer import Transformer as TransformerModel
-from einops import rearrange, repeat
+
 
 #? Define the size of a scene (For Kitti : 20)
 SCENE_INSTANCE_SIZE = 20
@@ -23,7 +22,7 @@ BOX_INCREASE = 0.2
 
 class MyLinearSimple(nn.Module):
     def __init__(self, linear_size, p_dropout=0.5):
-        super(MyLinearSimple, self).__init__()
+        super().__init__()
         self.l_size = linear_size
 
         self.relu = nn.ReLU(inplace=True)
@@ -54,9 +53,10 @@ class MyLinearSimple(nn.Module):
 
 class SimpleModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, num_heads = 4, device='cuda', transformer = False, 
+    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3,
+                num_heads = 4, device='cuda', transformer = False,
                 confidence = True,  lstm = False, scene_disp = False, scene_refine = False):
-        super(SimpleModel, self).__init__()
+        super().__init__()
 
         self.stereo_size = input_size
         self.mono_size = int(input_size / 2)
@@ -73,32 +73,41 @@ class SimpleModel(nn.Module):
         self.scene_refine = scene_refine
         self.confidence = confidence
 
-        assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and a LSTM at the same time (are you a psycho ??)"
+        assert (not (self.transformer and self.lstm)) , "The network cannot implement a transformer and"\
+                                                        "a LSTM at the same time (are you a psycho ??)"
         # Initialize weights
 
-        n_hidden = self.num_stage #? Number of stages for the transformer (a stage for the transfromer is the number of layer for the encoder/decoder). Of course, more layers means more calculations
-        mul_output = 1 #? determine if at the end of the transformer we add a fully connected layer to go from N to mul_output*N outputs. If mul_output = 1, there will be no such fully connected layer
+        n_hidden = self.num_stage #? Number of stages for the transformer (a stage for the transfromer
+        #?is the number of layer for the encoder/decoder). Of course, more layers means more calculations
+        mul_output = 1 #? determine if at the end of the transformer we add a fully connected layer to go
+        #?from N to mul_output*N outputs. If mul_output = 1, there will be no such fully connected layer
         n_head = self.num_heads #? the number of heads of of multi_headed attention model
         if self.confidence:
             n_inp = 3  #? the original input size for the keypoints (X,Y,C)
         else:
             n_inp = 2 #? keypoints must only contains the X and Y coordinate
         kind = "cat" #? The kind of position embedding between [cat, num, none] -> best one is cat
-        #? Cat adds a complex of a sin and cos after the data of the keypoints (hence, the inputs for the transformer grows from n_inp to n_inp + 2)
-        #? num adds a counter at the end of the data of the keypoints. It is a simple index going from [0, N-1] where N is the size of the sequence (hence, the inputs for the transformer grows from n_inp to n_inp + 1).  
+        #? Cat adds a complex of a sin and cos after the data of the keypoints (hence, the inputs
+        #? for the transformer grows from n_inp to n_inp + 2)
+        #? num adds a counter at the end of the data of the keypoints. It is a simple index going
+        #? from [0, N-1] where N is the size of the sequence (hence, the inputs for the transformer grows
+        #?  from n_inp to n_inp + 1).  
         
         
 
 
-        length_scene_sequence = SCENE_INSTANCE_SIZE #? in the case of the scene disposition (where we do not look at the keypoints but at the sequence of keypoints in our transformer),
-                                                    #? we needed to create a padded array of fixed size to put our instances. In this case, the instances in the sequence are the set of 
-                                                    #? 2d keypoints with their confidence and flattened. This constant is defined in the train/dataset part.
+        length_scene_sequence = SCENE_INSTANCE_SIZE 
+        #? in the case of the scene disposition (where we do not look at the keypoints but at 
+        #? the sequence of keypoints in our transformer), we needed to create a padded array 
+        #? of fixed size to put our instances. In this case, the instances in the sequence are the set of
+        #? 2d keypoints with their confidence and flattened. This constant is defined in the train/dataset part.
 
         
         # Preprocessing
         if self.transformer:            
             if self.scene_disp:
-                assert self.transformer, "Currently, the scene disposition method is only compatible with the transformer"
+                assert self.transformer, "Currently, the scene disposition method is only"\
+                                        " compatible with the transformer"
                 n_inp = self.stereo_size
 
                 if kind == 'cat':
@@ -108,19 +117,21 @@ class SimpleModel(nn.Module):
                 else:
                     embed_dim = n_inp
 
-                d_attention = int(embed_dim/n_head)#? The dimesion of the key, query and value vector in the attention mechanism. Being an embedding, its dimension should be inferior to the embed_dim
+                d_attention = int(embed_dim/n_head)#? The dimension of the key, query and value vector in the attention mechanism.
+                                                    #? Being an embedding, its dimension should be inferior to the embed_dim
                                                     #? In the original paper of the transformer, d_attention = int(embed_dim/n_head)
 
                 #? the input is in a format ([B, N, :]) in this case, N is the variable N_words
                 n_words = SCENE_INSTANCE_SIZE
 
-                self.transformer_scene = TransformerModel(n_base_dim = n_inp, n_target_dim = embed_dim*mul_output, n_words =  n_words, kind = kind, embed_dim = embed_dim,
-                                                                d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,confidence = self.confidence, 
-                                                                scene_disp = True)
-                                                                #? The confidence flag tells us if we should take into account the confidence for each keypoints, by design, yes
+                self.transformer_scene = TransformerModel(n_base_dim = n_inp, n_target_dim = embed_dim*mul_output, n_words =  n_words, kind = kind,
+                                                        embed_dim = embed_dim, d_attention =d_attention, num_heads = n_head, n_layers = n_hidden,
+                                                        confidence = self.confidence, scene_disp = True)
+                                                                #? The confidence flag tells us if we should take into account the confidence 
+                                                                # ?for each keypoints, by design, yes
                                                                 #? The scene_disp flag tells us if we are reasoning with scenes or keypoints 
-                                                                #? the reordering flag is there to order the inputs in a peculiar way (in the scene case, order
-                                                                #?   the instances depending on their height for example)
+                                                                #? the reordering flag is there to order the inputs in a peculiar way 
+                                                                #? (in the scene case, order the instances depending on their height for example)
 
                 self.w1 = nn.Linear(embed_dim*mul_output, self.linear_size) 
 
@@ -218,7 +229,7 @@ class SimpleModel(nn.Module):
         mask = self.transformer.generate_square_subsequent_mask(sz)
         return mask
 
-        
+
     def forward(self, x, env= None):
 
         if (self.transformer or self.lstm):
@@ -240,15 +251,15 @@ class SimpleModel(nn.Module):
                 y = rearrange(y, 'n b d -> b (n d)')
 
             y = self.w1(y)
-            
+
             aux = self.w_aux(y)
-            
+
             y = self.batch_norm1(y)
             y = self.relu(y)
             y = self.dropout(y)
-            
+
             y = self.w_fin(y)
-                
+   
             y = torch.cat((y, aux), dim=1)
 
             return y
@@ -268,7 +279,7 @@ class SimpleModel(nn.Module):
 
             y = self.w2(y)
             aux = self.w_aux(y)
-            
+
             y = self.w3(y)
             y = self.batch_norm3(y)
             y = self.relu(y)
@@ -281,8 +292,9 @@ class SimpleModel(nn.Module):
 
 class DecisionModel(nn.Module):
 
-    def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda:1'):
-        super(DecisionModel, self).__init__()
+    def __init__(self, input_size, output_size=2, linear_size=512, 
+                p_dropout=0.2, num_stage=3, device='cuda:1'):
+        super().__init__()
 
         self.num_stage = num_stage
         self.stereo_size = input_size
@@ -388,7 +400,7 @@ class DecisionModel(nn.Module):
 class AttentionModel(nn.Module):
 
     def __init__(self, input_size, output_size=2, linear_size=512, p_dropout=0.2, num_stage=3, device='cuda'):
-        super(AttentionModel, self).__init__()
+        super().__init__()
 
         self.num_stage = num_stage
         self.stereo_size = input_size
@@ -497,7 +509,7 @@ class AttentionModel(nn.Module):
 
 class MyLinear_stereo(nn.Module):
     def __init__(self, linear_size, p_dropout=0.5):
-        super(MyLinear_stereo, self).__init__()
+        super().__init__()
         self.l_size = linear_size
 
         self.relu = nn.ReLU(inplace=True)
@@ -543,7 +555,7 @@ class MonolocoModel(nn.Module):
     """
 
     def __init__(self, input_size, output_size=2, linear_size=256, p_dropout=0.2, num_stage=3):
-        super(MonolocoModel, self).__init__()
+        super().__init__()
 
         self.input_size = input_size
         self.output_size = output_size
@@ -581,7 +593,7 @@ class MonolocoModel(nn.Module):
 
 class MyLinear(nn.Module):
     def __init__(self, linear_size, p_dropout=0.5):
-        super(MyLinear, self).__init__()
+        super().__init__()
         self.l_size = linear_size
 
         self.relu = nn.ReLU(inplace=True)

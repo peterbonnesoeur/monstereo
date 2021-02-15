@@ -1,13 +1,13 @@
 
 import json
-import torch
-import numpy as np
-
-from torch.utils.data import Dataset
-from einops import rearrange, repeat
 
 from collections import defaultdict
+import numpy as np
 
+import torch
+
+from torch.utils.data import Dataset
+from einops import rearrange
 
 from ..utils import get_iou_matrix
 from ..network.architectures import SCENE_INSTANCE_SIZE, SCENE_LINE, BOX_INCREASE, SCENE_UNIQUE
@@ -181,104 +181,104 @@ class KeypointsDataset(Dataset):
 
     def line_scene_placement(self):
 
-            #? Function used to fragment the scenes into several clusters. 
-            #? Those clusters correspond to the superposition of the instances in a scene.
-            #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
-            #? This also allows to create an easier to link set of data for the scene level attention mechanism.
-            #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
-            threshold = SCENE_INSTANCE_SIZE
-                    
-            inputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.inputs_all.size(-1))
+        #? Function used to fragment the scenes into several clusters. 
+        #? Those clusters correspond to the superposition of the instances in a scene.
+        #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
+        #? This also allows to create an easier to link set of data for the scene level attention mechanism.
+        #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
+        threshold = SCENE_INSTANCE_SIZE
                 
-            outputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.outputs_all.size(-1))
-            kps_new = torch.zeros(len(self.names_all)*threshold, threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
+        inputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.inputs_all.size(-1))
             
-            names_new = []
-            
-            instance_index = 0
-            
-            for inputs, outputs, kps, names in zip(self.inputs_all, self.outputs_all, self.kps_all, self.names_all):
-                mask = torch.sum(inputs, dim = 1) != 0
-                
-                #! exclude the scenes with only one instance 
-                if torch.sum(mask) >1:
+        outputs_new = torch.zeros(len(self.names_all)*threshold , threshold,self.outputs_all.size(-1))
+        kps_new = torch.zeros(len(self.names_all)*threshold, threshold,  self.kps_all.size(-2),self.kps_all.size(-1))
         
-                    kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
-                    
-                    #? extend the size of the boxes (defined by the 2D keypoints) to allow for more clusters to be created
-                    offset = BOX_INCREASE
-                    x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
-                    y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
-                    x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
-                    y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
-                            
-                    offset_x = torch.abs(x_max-x_min)*offset
-                    offset_y = torch.abs(y_max-y_min)*offset
+        names_new = []
+        
+        instance_index = 0
+        
+        for inputs, outputs, kps, names in zip(self.inputs_all, self.outputs_all, self.kps_all, self.names_all):
+            mask = torch.sum(inputs, dim = 1) != 0
+            
+            #! exclude the scenes with only one instance 
+            if torch.sum(mask) >1:
+    
+                kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
                 
-                    box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
+                #? extend the size of the boxes (defined by the 2D keypoints) to allow for more clusters to be created
+                offset = BOX_INCREASE
+                x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+                y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+                x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+                y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                        
+                offset_x = torch.abs(x_max-x_min)*offset
+                offset_y = torch.abs(y_max-y_min)*offset
+            
+                box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
 
-                    pre_matches = get_iou_matrix(box, box)
-                    matches = []
-                    for i, match in enumerate(pre_matches):
-                        for j, item in enumerate(match):
-                            if item>0:
-                                matches.append((i, j))
+                pre_matches = get_iou_matrix(box, box)
+                matches = []
+                for i, match in enumerate(pre_matches):
+                    for j, item in enumerate(match):
+                        if item>0:
+                            matches.append((i, j))
+            
+                #? this defaultdict is made to register the matches between the different boxes
+                #? and perform a chain of matches
+                dic_matches = defaultdict(list)
                 
-                    #? this defaultdict is made to register the matches between the different boxes
-                    #? and perform a chain of matches
-                    dic_matches = defaultdict(list)
-                    
-                    for match in matches:
-                        if match[0] != match[1]:
-                            #? we don't register the matches between a box and itself
-                            dic_matches[match[0]].append(match[1])
-                            dic_matches[match[1]].append(match[0])
-                            
-                    initialised = list(dic_matches.keys())
+                for match in matches:
+                    if match[0] != match[1]:
+                        #? we don't register the matches between a box and itself
+                        dic_matches[match[0]].append(match[1])
+                        dic_matches[match[1]].append(match[0])
+                        
+                initialised = list(dic_matches.keys())
 
-                    for i in range(len(box)):
-                        if (len(dic_matches[i]) ==0 and i not in initialised ) or SCENE_UNIQUE:
-                            #? Only matches with itself
-                            inputs_new[instance_index, 0] = inputs[i]
-                            outputs_new[instance_index,0] = outputs[i]
-                            kps_new[instance_index, 0] = kps[i]
-                            names_new.append(names)               
+                for i in range(len(box)):
+                    if (len(dic_matches[i]) ==0 and i not in initialised ) or SCENE_UNIQUE:
+                        #? Only matches with itself
+                        inputs_new[instance_index, 0] = inputs[i]
+                        outputs_new[instance_index,0] = outputs[i]
+                        kps_new[instance_index, 0] = kps[i]
+                        names_new.append(names)               
+                        instance_index+=1
+                    else:
+                        #? chain of matches
+                        list_match = dic_matches[i]
+                        dic_matches.pop(i)
+                        flag = True
+                        while flag:
+                            flag = False
+                            for item in list_match:
+                                if len(dic_matches[item])>0:
+                                    flag = True
+                                    for match in dic_matches[item]:
+                                        list_match.append(match)
+                                    dic_matches.pop(item)
+                                    
+                        for count, match in enumerate(np.unique(list_match)):
+                            inputs_new[instance_index, count] = inputs[match]
+                            outputs_new[instance_index,count] = outputs[ match]
+                            kps_new[instance_index, count] = kps[ match]
+                                                        
+                        if len(list_match)>0:
+                            # ? only update the name once all the matches are processed
                             instance_index+=1
-                        else:
-                            #? chain of matches
-                            list_match = dic_matches[i]
-                            dic_matches.pop(i)
-                            flag = True
-                            while flag:
-                                flag = False
-                                for item in list_match:
-                                    if len(dic_matches[item])>0:
-                                        flag = True
-                                        for match in dic_matches[item]:
-                                            list_match.append(match)
-                                        dic_matches.pop(item)
-                                        
-                            for count, match in enumerate(np.unique(list_match)):
-                                inputs_new[instance_index, count] = inputs[match]
-                                outputs_new[instance_index,count] = outputs[ match]
-                                kps_new[instance_index, count] = kps[ match]
-                                                            
-                            if len(list_match)>0:
-                                # ? only update the name once all the matches are processed
-                                instance_index+=1
-                                names_new.append(names)
-                else:
-                    
-                    inputs_new[instance_index] = inputs
-                    outputs_new[instance_index] = outputs
-                    kps_new[instance_index] = kps
-                    names_new.append(names)
-                    instance_index+=1
-                    
-            self.outputs_all = outputs_new[:instance_index]
-            self.inputs_all = inputs_new[:instance_index]
-            self.kps_all = kps_new[:instance_index]
-            self.names_all = names_new
+                            names_new.append(names)
+            else:
+                
+                inputs_new[instance_index] = inputs
+                outputs_new[instance_index] = outputs
+                kps_new[instance_index] = kps
+                names_new.append(names)
+                instance_index+=1
+                
+        self.outputs_all = outputs_new[:instance_index]
+        self.inputs_all = inputs_new[:instance_index]
+        self.kps_all = kps_new[:instance_index]
+        self.names_all = names_new
     
     def get_cluster_annotations(self, clst):
         """Return normalized annotations corresponding to a certain cluster

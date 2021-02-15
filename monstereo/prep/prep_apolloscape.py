@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import math
 import copy
 import json
 import logging
@@ -9,12 +8,12 @@ from collections import defaultdict
 import datetime
 import numpy as np
 import torch
-from ..utils import correct_angle, normalize_hwl, pixel_to_camera, to_spherical #,append_cluster
+from ..utils import correct_angle, to_spherical #,append_cluster
 
 from ..network.process import preprocess_monoloco, keypoints_dropout, clear_keypoints
 
-from ..utils import K, KPS_MAPPING , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat,car_projection,\
-                    pifpaf_info_extractor, keypoint_expander, keypoints_to_cad_model, \
+from ..utils import K , APOLLO_CLUSTERS ,car_id2name, intrinsic_vec_to_mat,car_projection,\
+                    pifpaf_info_extractor, keypoint_expander, \
                     set_logger, get_iou_matches
 
 
@@ -164,13 +163,14 @@ class PreprocessApolloscape:
                     self.dic_names[scene_id+".jpg"]['car_model'] = copy.deepcopy(car_model_list)
 
                     self.dic_names[scene_id+".jpg"]['K'] = copy.deepcopy(intrinsic_vec_to_mat(kk).tolist())
+                    ys_list_final = []
                 
 
                 if phase == 'val' and dropout > 0.0:
                     #? If we are in the validation case, we should not use the dropout parameter.
                     continue
                 
-                ys_list_final = []
+                
 
                 for kps, ys, boxes_gt, boxes_3d in zip(kps_list, ys_list, boxes_gt_list, boxes_3d_list):
                     
@@ -213,7 +213,8 @@ class PreprocessApolloscape:
                     #? For the manual evaluation, the extended dataset with the dropout is not considered.
                     #? We train on the extended dataset and evaluate on the original dataset
 
-                    self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
+                    #self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy(ys_list_final if self.kps_3d else ys_list)
+                    self.dic_names[scene_id+".jpg"]['ys'] = copy.deepcopy( ys_list)
 
 
         with open(os.path.join(self.path_joints), 'w') as f:

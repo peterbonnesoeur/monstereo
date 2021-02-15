@@ -6,7 +6,7 @@ given 2d joints
 """
 
 import copy
-import numpy as np
+
 import os
 import datetime
 import logging
@@ -15,7 +15,8 @@ import sys
 import time
 import warnings
 from itertools import chain
-from einops import rearrange, repeat
+import numpy as np
+from einops import rearrange
 
 import matplotlib.pyplot as plt
 import torch
@@ -747,7 +748,6 @@ def get_distances(clusters):
     return tuple(distances)
 
 def show_box_plot(dic_errors, clusters, show=False, save=False, vehicles = False, dataset = 'nuscenes'):
-    import pandas as pd
     dir_out = 'docs/'
     if vehicles:
         dir_out+=""

@@ -4,8 +4,6 @@ import argparse
 
 #from openpifpaf.network import nets
 #from openpifpaf import decoder
-import os
-os.environ['JOBLIB_TEMP_FOLDER'] = '/tmp'
 
 def cli():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -20,7 +18,7 @@ def cli():
     # Preprocess input data
     prep_parser.add_argument('--dir_ann', help='directory of annotations of 2d joints', required=True)
     prep_parser.add_argument('--dataset',
-                             help='datasets to preprocess: nuscenes, nuscenes_teaser, nuscenes_mini, kitti, apolloscape ,apolloscape-mini',     
+                             help="datasets to preprocess: nuscenes, nuscenes_teaser, nuscenes_mini, kitti, apolloscape ,apolloscape-mini",
                              default='kitti')
     prep_parser.add_argument('--dir_nuscenes', help='directory of nuscenes devkit', default='data/nuscenes/')
     prep_parser.add_argument('--dir_apolloscape', help='directory of the apolloscape dataser', default='data/apolloscape/' )
@@ -64,7 +62,7 @@ def cli():
     predict_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     predict_parser.add_argument('--scene_disp', help='Uses the scene formatting', action = 'store_true')
 
-    
+
     # Pifpaf
     predict_parser.add_argument('--scale', default=1.0, type=float, help='change the scale of the image to preprocess')
 
@@ -97,7 +95,7 @@ def cli():
     training_parser.add_argument('--save', help='whether to not save model and log file', action='store_true')
     training_parser.add_argument('-e', '--epochs', type=int, help='number of epochs to train for', default=500)
     training_parser.add_argument('--bs', type=int, default=512, help='input batch size')
-    training_parser.add_argument('--monocular', help='whether to train monoloco', action='store_true')          #TRUE for us
+    training_parser.add_argument('--monocular', help='whether to train monoloco', action='store_true')#TRUE for us
     training_parser.add_argument('--dataset', help='datasets to evaluate, kitti, nuscenes or apolloscape', default='kitti')
     training_parser.add_argument('--kps_3d', help='Change the output size of the network to train the network on the 3D position of the keypoints [Warning, '
                             'this is only available for the apolloscape vehicle datset with 24 keypoints]', action='store_true')
@@ -149,7 +147,6 @@ def cli():
     eval_parser.add_argument('--lstm', help='Use an LSTM for the processing', action = 'store_true')
     eval_parser.add_argument('--scene_disp', help='Use a batchification by scenes', action = 'store_true')
     eval_parser.add_argument('--scene_refine', help='Use a refining step after the use of the transformer', action = 'store_true')
-    
     args = parser.parse_args()
     return args
 
@@ -158,7 +155,8 @@ def main():
     args = cli()
 
     if args.transformer and args.command == 'prep':
-        #? For the preparation step with the transformer, we want to have the confidence as well as the 2d coordinate of the keypoints
+        #? For the preparation step with the transformer, we want to have the confidence as well
+        #? as the 2d coordinate of the keypoints
         #? The confidence is always needed since it is used to obtain the mask for the inputs.
         args.confidence=True
     if args.command == 'predict':
@@ -176,18 +174,21 @@ def main():
             prep.run()
         elif 'apolloscape_mini' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
-            prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer,  kps_3d = args.kps_3d,
-                                         dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
+            prep = PreprocessApolloscape(args.dir_ann, dataset = '3d_car_instance_sample', buffer = args.buffer,
+                                        kps_3d = args.kps_3d, dropout = args.dropout, confidence = args.confidence,
+                                        iou_min = args.iou_min, transformer =args.transformer)
             prep.run()
         elif 'apolloscape' in args.dataset:
             from .prep.prep_apolloscape import PreprocessApolloscape
-            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer,  kps_3d = args.kps_3d, dropout = args.dropout,
-                                         confidence = args.confidence, iou_min = args.iou_min, transformer =args.transformer)
+            prep = PreprocessApolloscape(args.dir_ann, dataset = 'train', buffer = args.buffer,  kps_3d = args.kps_3d,
+                                        dropout = args.dropout, confidence = args.confidence, iou_min = args.iou_min,
+                                        transformer =args.transformer)
             prep.run()
 
         else:
             from .prep.prep_kitti import PreprocessKitti
-            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles, dropout = args.dropout, confidence=args.confidence, transformer =args.transformer)
+            prep = PreprocessKitti(args.dir_ann, args.iou_min, args.monocular, vehicles= args.vehicles,
+                                    dropout = args.dropout, confidence=args.confidence, transformer = args.transformer)
             if args.activity:
                 prep.prep_activity()
             else:
@@ -202,7 +203,8 @@ def main():
                                    vehicles = args.vehicles, kps_3d = args.kps_3d,
                                    dataset = args.dataset, confidence = args.confidence,
                                    transformer = args.transformer,
-                                   lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine,
+                                   lstm = args.lstm, scene_disp = args.scene_disp,
+                                   scene_refine = args.scene_refine,
                                    dir_ann = args.dir_ann)
             hyp_tuning.train()
         else:
@@ -210,10 +212,11 @@ def main():
             from .train import Trainer
             training = Trainer(joints=args.joints, epochs=args.epochs, bs=args.bs,
                                monocular=args.monocular, dropout=args.dropout, lr=args.lr, sched_step=args.sched_step,
-                               n_stage=args.n_stage,  num_heads = args.num_heads, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
-                               r_seed=args.r_seed, save=args.save, vehicles = args.vehicles, kps_3d = args.kps_3d,
-                               dataset = args.dataset, confidence = args.confidence, transformer = args.transformer,
-                               lstm = args.lstm, scene_disp= args.scene_disp, scene_refine = args.scene_refine)
+                               n_stage=args.n_stage,  num_heads = args.num_heads, sched_gamma=args.sched_gamma,
+                               hidden_size=args.hidden_size, r_seed=args.r_seed, save=args.save, vehicles = args.vehicles,
+                               kps_3d = args.kps_3d, dataset = args.dataset, confidence = args.confidence,
+                               transformer = args.transformer, lstm = args.lstm, scene_disp= args.scene_disp,
+                               scene_refine = args.scene_refine)
 
             _ = training.train()
             _ = training.evaluate()
@@ -241,14 +244,16 @@ def main():
             if args.generate:
                 from .eval.generate_kitti import GenerateKitti
                 kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
-                                          hidden_size=args.hidden_size, vehicles = args.vehicles, model_mono = args.model_mono,
-                                          confidence = args.confidence, transformer = args.transformer, 
-                                          lstm = args.lstm, scene_disp = args.scene_disp, scene_refine = args.scene_refine)
+                                        hidden_size=args.hidden_size, vehicles = args.vehicles,
+                                        model_mono = args.model_mono, confidence = args.confidence,
+                                        transformer = args.transformer, lstm = args.lstm,
+                                        scene_disp = args.scene_disp, scene_refine = args.scene_refine)
                 kitti_txt.run()
 
             if args.dataset == 'kitti':
                 from .eval import EvalKitti
-                kitti_eval = EvalKitti(verbose=args.verbose, vehicles = args.vehicles, dir_ann=args.dir_ann, transformer=args.transformer)
+                kitti_eval = EvalKitti(verbose=args.verbose, vehicles = args.vehicles,
+                                        dir_ann=args.dir_ann, transformer=args.transformer)
                 kitti_eval.run()
                 kitti_eval.printer(show=args.show, save=args.save)
 
@@ -259,15 +264,16 @@ def main():
 
             elif 'apolloscape' in args.dataset:
                 from .train import Trainer
-                training = Trainer(joints=args.joints, hidden_size=args.hidden_size, dataset=args.dataset, monocular = args.monocular, 
-                                    vehicles = args.vehicles ,kps_3d = args.kps_3d , confidence = args.confidence, transformer=args.transformer)
-                _ = training.evaluate(load=True, model=args.model, debug=False, confidence = args.confidence, transformer = args.transformer)
+                training = Trainer(joints=args.joints, hidden_size=args.hidden_size, dataset=args.dataset,
+                                    monocular = args.monocular, vehicles = args.vehicles ,kps_3d = args.kps_3d,
+                                    confidence = args.confidence, transformer=args.transformer)
+                _ = training.evaluate(load=True, model=args.model, debug=False, confidence = args.confidence,
+                                    transformer = args.transformer)
             else:
                 raise ValueError("Option not recognized")
 
     else:
         raise ValueError("Main subparser not recognized or not provided")
-
 
 if __name__ == '__main__':
     main()

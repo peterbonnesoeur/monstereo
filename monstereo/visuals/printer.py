@@ -3,6 +3,7 @@ Class for drawing frontal, bird-eye-view and combined figures
 """
 # pylint: disable=attribute-defined-outside-init
 import math
+import json
 from collections import OrderedDict
 
 import numpy as np
@@ -11,8 +12,6 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.patches import Ellipse, Circle, Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from mpl_toolkits.mplot3d import Axes3D
-
 
 from ..utils import pixel_to_camera, get_task_error, project
 
@@ -59,7 +58,7 @@ class Printer:
         self.pos_pred = [xx[0:3] for xx in dic_ann['xyz_pred']]
         self.pos_gt = [xx[0:3] for xx in dic_ann['xyz_real']]
 
-        
+
         if "kps_3d_pred" in dic_ann.keys():
             self.kps_3d_pred = np.array(dic_ann['kps_3d_pred'])
             self.kps_3d_conf = np.array(dic_ann['kps_3d_conf'])
@@ -70,7 +69,7 @@ class Printer:
         try:
             self.angles = dic_ann['angles_egocentric']
         except KeyError:
-                print("key error for the angle")
+            print("key error for the angle")
 
         # Do not print instances outside z_max
         self.zz_gt = [xx[2] if xx[2] < self.z_max - self.stds_epi[idx] else 0
@@ -158,13 +157,6 @@ class Printer:
             ax1 = fig.add_subplot(gs[1,0])
             ax2 = ax0
             ax3 = fig.add_subplot(gs[1,1],projection='3d')
-            #fig, (ax0s, ax1s) = plt.subplots(2, 2, sharey=False, gridspec_kw={'width_ratios': },1                               figsize=(fig_width, fig_height))
-
-            
-            """ax0, ax1 = ax0s
-            ax2, ax3 = ax1s  
-            ax3.remove()
-            ax3 = fig.add_subplot(2,2,4,projection='3d')"""
 
             ax1.set_aspect(fig_ar_1)
             fig.set_tight_layout(True)
@@ -197,12 +189,6 @@ class Printer:
             ax2 = ax0
             ax3 = fig.add_subplot(gs[1,1],projection='3d')
 
-            
-            """ax0, ax1 = ax0s
-            ax2, ax3 = ax1s
-            ax3.remove()
-            ax3 = fig.add_subplot(2,2,4,projection='3d')"""
-
             ax1.set_aspect(fig_ar_1)
             fig.set_tight_layout(True)
             fig.subplots_adjust(left=0.02, right=0.98, bottom=0, top=1, hspace=0, wspace=0.02)
@@ -234,13 +220,6 @@ class Printer:
             ax1 = fig.add_subplot(gs[1,0])
             ax2 = ax0
             ax3 = fig.add_subplot(gs[1,1],projection='3d')
-            #fig, (ax0s, ax1s) = plt.subplots(2, 2, sharey=False, gridspec_kw={'width_ratios': },1                               figsize=(fig_width, fig_height))
-
-            
-            """ax0, ax1 = ax0s
-            ax2, ax3 = ax1s
-            ax3.remove()
-            ax3 = fig.add_subplot(2,2,4,projection='3d')"""
 
             ax1.set_aspect(fig_ar_1)
             fig.set_tight_layout(True)
@@ -286,7 +265,8 @@ class Printer:
             figures.append(fig0)
 
         # Create front figure axis
-        if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
+        if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d',
+                                                'combined_kps', 'combined_nkps', '3d_visu']):
             ax0 = self.set_axes(ax0, axis=0)
 
             divider = make_axes_locatable(ax0)
@@ -308,7 +288,8 @@ class Printer:
             fig1, ax1 = plt.subplots(1, 1)
             fig1.set_tight_layout(True)
             figures.append(fig1)
-        if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
+        if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps',
+                                                    'combined_nkps', '3d_visu']):
             ax1 = self.set_axes(ax1, axis=1)  # Adding field of view
             axes.append(ax1)
 
@@ -317,7 +298,7 @@ class Printer:
             ax3 =self.set_axes(ax3, axis = 3)
             axes.append(ax2)
             axes.append(ax3)
-        
+
         return figures, axes
 
     def draw(self, figures, axes, dic_out, image, show_all=False, draw_text=True, legend=True, draw_box=False,
@@ -327,12 +308,12 @@ class Printer:
         keypoints = []
         if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
             _, _, pifpaf_out = kps[:]
-            
+
             for pifpaf_o in pifpaf_out:
                 #keypoints.append(np.reshape(pifpaf_o['keypoints'], (3,-1)))
                 length = len(pifpaf_o['keypoints'])/3
                 x = pifpaf_o['keypoints'][0::3]
-                y = pifpaf_o['keypoints'][1::3] 
+                y = pifpaf_o['keypoints'][1::3]
                 keypoints.append([x,y])
         # Process the annotation dictionary of monoloco
         self._process_results(dic_out)
@@ -347,7 +328,8 @@ class Printer:
         num = 0
         self.mpl_im0.set_data(image)
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
+            if any(xx in self.output_types for xx in ['front', 'combined', 'combined_3d', 'combined_kps',
+                                                    'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
 
                 color = self.cmap((self.zz_pred[idx] % self.z_max) / self.z_max)
                 #color = 'red'
@@ -361,9 +343,10 @@ class Printer:
 
         # Draw the bird figure
         num = 0
-        
+
         for idx in iterator:
-            if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
+            if any(xx in self.output_types for xx in ['bird', 'combined', 'combined_3d',
+                                                        'combined_kps', 'combined_nkps', '3d_visu']) and self.zz_pred[idx] > 0:
 
                 # Draw ground truth and uncertainty
                 self.draw_uncertainty(axes, idx)
@@ -377,52 +360,45 @@ class Printer:
         previous_idx = []
         for idx in iterator:
             if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
-                #self.draw_keypoints(axes, keypoints[idx], idx)
+                #self.draw_keypoints(axes, keypoints[idx])
                 previous_idx.append(idx)
                 #self.draw_3d_visu(axes, idx)
 
         for idx, keypoint in enumerate(keypoints):
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
-                    if idx not in previous_idx:
-                        self.draw_3d_visu(axes, idx, color = 'red')
+                if idx not in previous_idx:
+                    self.draw_3d_visu(axes, idx, color = 'red')
 
         #? Quick fix for a previous problem. Will be moidifeid in due time
         for idx in iterator:
             if any(xx in self.output_types for xx in ['combined_3d','combined_kps', 'combined_nkps', '3d_visu']):
-                #self.draw_keypoints(axes, keypoints[idx], idx)
+                #self.draw_keypoints(axes, keypoints[idx])
                 self.draw_3d_visu(axes, idx)
-                  
+
 
         for idx, keypoint in enumerate(keypoints):
             if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', '3d_visu']):
-                    self.draw_keypoints(axes, keypoint, idx)
-                    
+                self.draw_keypoints(axes, keypoint)
+     
 
         for idx, keypoint in enumerate(keypoints):
-            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps', 'combined_nkps', '3d_visu']):
-                    if idx not in previous_idx:
-                        #self.draw_missing_pos(axes, idx)
-                        self.draw_missing_ellipses(axes, idx)
-
-
-
-
-
-
+            if any(xx in self.output_types for xx in ['combined_3d', 'combined_kps',
+                                                     'combined_nkps', '3d_visu']):
+                if idx not in previous_idx:
+                    #self.draw_missing_pos(axes, idx)
+                    self.draw_missing_ellipses(axes, idx)
 
         for idx, _ in enumerate(keypoints):
             if idx not in previous_idx:
                 if any(xx in self.output_types for xx in [ '3d_visu']):
-                    #print("IN THERE 2")
                     self.draw_3d_scatter(axes, idx, color = 'green')
 
         for idx in iterator:
-            #print("IN THERE 1")
             if any(xx in self.output_types for xx in [ '3d_visu']):
                 self.draw_3d_scatter(axes, idx, color = 'blue')
         if legend:
             draw_legend(axes)
-            
+
         # Draw, save or/and show the figures
         for idx, fig in enumerate(figures):
             fig.canvas.draw()
@@ -432,11 +408,10 @@ class Printer:
                 fig.show()
             plt.close(fig)
 
-    def draw_keypoints(self, axes, keypoints, idx):
+    def draw_keypoints(self, axes, keypoints):
         axes[2].scatter(keypoints[0], np.array(keypoints[1])*self.y_scale)
 
     def draw_3d_visu(self, axes, idx, color = 'grey'):
-        import json
         if len(self.car_models) !=0:
             car_model = self.car_models[idx]
         else:
@@ -447,7 +422,7 @@ class Printer:
         triangles = np.array(data['faces']) - 1
 
         x,y,z = self.pos_pred[idx]
-        
+
         if "Camera" in self.output_path:
             T = np.float32([0.0, self.angles[idx] ,0.0 ,x,y,z])
         #if 'kitti' in self.output_path or  "export" in self.output_path:
@@ -456,9 +431,9 @@ class Printer:
         scale = np.float32([1, 1, 1])
         if z< self.z_max:
             vertices_r = project(T, scale, vertices )
-            #ax.set_title('car_type: '+data['car_type'])
-           
-            axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles, -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
+
+            axes[3].plot_trisurf(vertices_r[:,0], vertices_r[:,2], triangles,
+                                 -vertices_r[:,1] + np.mean(vertices_r[:,1]), shade=True, color=color)
 
         axes[3].set_xlim([-20, 20])
         axes[3].set_ylim([0, self.z_max])
@@ -469,13 +444,12 @@ class Printer:
 
     def draw_3d_scatter(self, axes, idx, color = 'grey'):
 
-        #print("KEYPOINTS ", self.kps_3d_pred[idx], idx)
         if (self.zz_pred[idx]< self.z_max and self.zz_pred[idx]>0) :
-        
+
             mask = self.kps_3d_conf[idx]>0
-            #print("IN PRINTER", self.kps_3d_pred[idx])
-            #print("mask", mask)
-            axes[3].scatter(self.kps_3d_pred[idx][mask,0], self.kps_3d_pred[idx][mask,2] , self.kps_3d_pred[idx][mask,1] - np.mean(self.kps_3d_pred[idx][mask,1]  ),color=color)
+            axes[3].scatter(self.kps_3d_pred[idx][mask,0], self.kps_3d_pred[idx][mask,2],
+                             self.kps_3d_pred[idx][mask,1] - np.mean(self.kps_3d_pred[idx][mask,1]  )
+                             ,color=color)
 
         axes[3].set_xlim([-20, 20])
         axes[3].set_ylim([0, self.z_max])
@@ -525,7 +499,8 @@ class Printer:
 
     def draw_missing_pos(self,axes, idx):
         if self.zz_pred[idx]<=self.z_max and self.zz_pred[idx] > 0:
-            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT", markersize=5, marker='o')
+            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red',
+                        label="Prediction without GT", markersize=5, marker='o')
 
 
     def draw_missing_ellipses(self, axes, idx):
@@ -534,8 +509,8 @@ class Printer:
             #print(self.zz_pred[idx])
             angle = get_angle(self.xx_pred[idx], self.zz_pred[idx])
             ellipse_ale = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_ale[idx] * 2,
-                                height=1, angle=angle, color='orange', fill=False, label="Aleatoric Uncertainty without GT",
-                                linewidth=1.3)
+                                height=1, angle=angle, color='orange',
+                                fill=False, label="Aleatoric Uncertainty without GT", linewidth=1.3)
             ellipse_var = Ellipse((self.xx_pred[idx], self.zz_pred[idx]), width=self.stds_epi[idx] * 2,
                                 height=1, angle=angle, color='r', fill=False, label="Uncertainty without GT",
                                 linewidth=1, linestyle='--')
@@ -544,8 +519,9 @@ class Printer:
             if self.epistemic:
                 axes[1].add_patch(ellipse_var)
 
-            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT", markersize=5, marker='o')
- 
+            axes[1].plot(self.xx_pred[idx], self.zz_pred[idx], color='red', label="Prediction without GT",
+                         markersize=5, marker='o')
+
 
     def draw_ellipses(self, axes, idx):
         """draw uncertainty ellipses"""
@@ -594,7 +570,7 @@ class Printer:
         std = self.stds_epi[idx] if self.stds_epi[idx] > 0 else self.stds_ale[idx]
         theta = math.atan2(self.zz_pred[idx], self.xx_pred[idx])
 
-        
+
         delta_x = std * math.cos(theta)
         delta_z = std * math.sin(theta)
 
@@ -603,13 +579,17 @@ class Printer:
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
             if angle:
-                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] + delta_z-5,
+                            str(self.angles[idx]*180/np.pi).split(".")[0],
+                            fontsize=self.FONTSIZE_BV, color='black')
         else:
             axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] - 5,
                         str(num), fontsize=self.FONTSIZE_BV, color='darkorange')
             if angle:
 
-                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5, str(self.angles[idx]*180/np.pi).split(".")[0], fontsize=self.FONTSIZE_BV, color='black')
+                axes[1].text(self.xx_pred[idx] + delta_x, self.zz_pred[idx] -5,
+                            str(self.angles[idx]*180/np.pi).split(".")[0],
+                            fontsize=self.FONTSIZE_BV, color='black')
 
     def draw_circle(self, axes, uv, color):
 
@@ -645,7 +625,7 @@ class Printer:
             self.mpl_im0 = ax.imshow(self.im)
             #ax.set_ylabel("test_ax_2")
 
-        
+
         if axis == 3:
             ax.set_ylabel("test_ax_3")
             print(type(ax))

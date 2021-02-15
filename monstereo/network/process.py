@@ -2,16 +2,17 @@
 import json
 import os
 
+import random
+from collections import defaultdict
 import numpy as np
 import torch
 import torchvision
-import torch
-import random
 from einops import rearrange
 
-from collections import defaultdict
 
-from ..utils import get_keypoints, pixel_to_camera, to_cartesian, back_correct_angles, get_iou_matrix
+
+from ..utils import get_keypoints, pixel_to_camera, to_cartesian, \
+                    back_correct_angles, get_iou_matrix
 
 BF = 0.54 * 721
 z_min = 4
@@ -93,122 +94,121 @@ def preprocess_monoloco(keypoints, kk, zero_center=False, kps_3d = False, confid
 
 def reorganise_scenes(array, condition= "ypos", refining = False, descending = False):  
 
-        #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
-        
-        if refining:
-            return None
+    #? The objective of this function is to reorganise the instances for the scene and refining step depending on some factor
+    
+    if refining:
+        return None
+    else:
+        array = rearrange(array[:,:], 'b (n d) -> b n d', d = 3)
+
+        mask = array[:,:,-1] != 0
+
+        if condition == "ypos":
+            a = (torch.sum(array[:,:,1], dim = 1)/torch.sum(mask, dim = 1)).to(array.device)
+
+        elif condition == "xpos":
+            a = torch.sum(array[:,:,0], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
+  
+        elif condition == "height":
+            a = (torch.max(array[:,:,1], dim = 1)[0]- torch.min(array[:,:,1], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)
+
+        elif condition == "width":
+            a = (torch.max(array[:,:,0], dim = 1)[0]- torch.min(array[:,:,0], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)  
+
+        elif condition == "kps_num":
+            a = torch.sum(mask, dim = 1).to(array.device)
+
+        elif condition == "confidence":
+            a = torch.sum(array[:,:,-1], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
         else:
-            
-            array = rearrange(array[:,:], 'b (n d) -> b n d', d = 3)
+            return torch.arange(0, array.size(0)).to(array.device)
 
-            mask = array[:,:,-1] != 0
-            
-            if condition == "ypos":
-                a = (torch.sum(array[:,:,1], dim = 1)/torch.sum(mask, dim = 1)).to(array.device)
-                
-            elif condition == "xpos":
-                a = torch.sum(array[:,:,0], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
-                
-            elif condition == "height":
-                a = (torch.max(array[:,:,1], dim = 1)[0]- torch.min(array[:,:,1], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)
-                
-            elif condition == "width":
-                a = (torch.max(array[:,:,0], dim = 1)[0]- torch.min(array[:,:,0], dim = 1)[0])/torch.sum(mask, dim = 1).to(array.device)  
+        sorted_array, indices = torch.sort(a, descending = descending)
+        # Remove the incorrect elements -> technique to not consider the padde elements. 
+        new_mask = ((torch.isinf(sorted_array)+torch.isnan(sorted_array)) == False).to(array.device)
 
-            elif condition == "kps_num":
-                a = torch.sum(mask, dim = 1).to(array.device)
-                
-            elif condition == "confidence":
-                a = torch.sum(array[:,:,-1], dim = 1)/torch.sum(mask, dim = 1).to(array.device)
-            else:
-                return torch.arange(0, array.size(0)).to(array.device)
-            
-            sorted_array, indices = torch.sort(a, descending = descending)
-            # Remove the incorrect elements -> technique to not consider the padde elements. 
-            new_mask = ((torch.isinf(sorted_array)+torch.isnan(sorted_array)) == False).to(array.device)
-                
-            return indices[new_mask]
+        return indices[new_mask]
 
 def reorganise_lines(inputs, offset = 0.2, unique  = False):  
-        #? Function used to fragment the scenes into several clusters. 
-        #? Those clusters correspond to the superposition of the instances in a scene.
-        #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
-        #? This also allows to create an easier to link set of data for the scene level attention mechanism.
-        #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
-        inputs_new = torch.zeros(inputs.size(1) , inputs.size(1),inputs.size(-1)).to(inputs.device)
+    #? Function used to fragment the scenes into several clusters. 
+    #? Those clusters correspond to the superposition of the instances in a scene.
+    #? For exemple, in the context of heavy traffic, the superposition of several vehicles in the depth will result in a cluster.
+    #? This also allows to create an easier to link set of data for the scene level attention mechanism.
+    #? The "line" reference is linked to the shape of the clusters that regroups in heavy traffic several instances in the same line.
+    inputs_new = torch.zeros(inputs.size(1) , inputs.size(1),inputs.size(-1)).to(inputs.device)
+    
+    instance_index = 0
+    
+    mask = (torch.sum(inputs[0], dim = 1) != 0).to(inputs.device)
+                    
+    if sum(mask) >1:
+        inputs = inputs[0]
+        kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
+        indices_matches = []
         
-        instance_index = 0
-        
-        mask = (torch.sum(inputs[0], dim = 1) != 0).to(inputs.device)
-                        
-        if sum(mask) >1:
-            inputs = inputs[0]
-            kp = rearrange(inputs, 'b (n d) -> b d n', d = 3)
-            indices_matches = []
-            
-            x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
-            y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
-            x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
-            y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
-                    
-            offset_x = torch.abs(x_max-x_min)*offset
-            offset_y = torch.abs(y_max-y_min)*offset
-                    
-                    
-            box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
+        x_min = torch.min(kp[mask][:,0,:], dim = -1)[0]
+        y_min = torch.min(kp[mask][:,1,:], dim = -1)[0]
+        x_max = torch.max(kp[mask][:,0,:], dim = -1)[0]
+        y_max = torch.max(kp[mask][:,1,:], dim = -1)[0]
+                
+        offset_x = torch.abs(x_max-x_min)*offset
+        offset_y = torch.abs(y_max-y_min)*offset
+                
+                
+        box = rearrange(torch.stack((x_min-offset_x, y_min-offset_y, x_max+offset_x, y_max+ offset_y)), "b n -> n b")
 
-            pre_matches = get_iou_matrix(box, box)
-            matches = []
-            #! detect all the matches happening between our boxes (of course, a box has an intersection with itself)
-            for i, match in enumerate(pre_matches):
-                for j, item in enumerate(match):
-                    if item>0:
-                        matches.append((i, j))
+        pre_matches = get_iou_matrix(box, box)
+        matches = []
+        #! detect all the matches happening between our boxes (of course, a box has an intersection with itself)
+        for i, match in enumerate(pre_matches):
+            for j, item in enumerate(match):
+                if item>0:
+                    matches.append((i, j))
+    
+        #? this defaultdict is made to register the matches between the different boxes
+        #? and perform a chain of matches
+        dic_matches = defaultdict(list)
         
-            #? this defaultdict is made to register the matches between the different boxes
-            #? and perform a chain of matches
-            dic_matches = defaultdict(list)
-            
-            for match in matches:
-                if match[0] != match[1]:
-                    #? we don't register the matches between a box and itself
-                    dic_matches[match[0]].append(match[1])
-                    dic_matches[match[1]].append(match[0])
-                    
-            initialised = list(dic_matches.keys())
-            
-            for i in range(len(box)):
-                if (len(dic_matches[i]) ==0 and i not in initialised) or unique :
-                    #? Only matches with itself
-                    inputs_new[instance_index, 0] = inputs[i]
-                    indices_matches.append(i)
+        for match in matches:
+            if match[0] != match[1]:
+                #? we don't register the matches between a box and itself
+                dic_matches[match[0]].append(match[1])
+                dic_matches[match[1]].append(match[0])
+                
+        initialised = list(dic_matches.keys())
+        
+        for i in range(len(box)):
+            if (len(dic_matches[i]) ==0 and i not in initialised) or unique :
+                #? Only matches with itself
+                inputs_new[instance_index, 0] = inputs[i]
+                indices_matches.append(i)
+                instance_index+=1
+            else:
+                #? chain of matches
+                list_match = dic_matches[i]
+                dic_matches.pop(i)
+                flag = True
+                while flag:
+                    flag = False
+                    for item in list_match:
+                        if len(dic_matches[item])>0:
+                            flag = True
+                            for match in dic_matches[item]:
+                                list_match.append(match)
+                            dic_matches.pop(item)
+                            
+                for count, match in enumerate(np.unique(list_match)):
+                    inputs_new[instance_index, count] = inputs[match]
+                    indices_matches.append(match)
+                                            
+                if len(list_match)>0:
+                    # ? only update the name once all the matches are processed
                     instance_index+=1
-                else:
-                    #? chain of matches
-                    list_match = dic_matches[i]
-                    dic_matches.pop(i)
-                    flag = True
-                    while flag:
-                        flag = False
-                        for item in list_match:
-                            if len(dic_matches[item])>0:
-                                flag = True
-                                for match in dic_matches[item]:
-                                    list_match.append(match)
-                                dic_matches.pop(item)
-                                
-                    for count, match in enumerate(np.unique(list_match)):
-                        inputs_new[instance_index, count] = inputs[match]
-                        indices_matches.append(match)
-                                                
-                    if len(list_match)>0:
-                        # ? only update the name once all the matches are processed
-                        instance_index+=1
 
-            return inputs_new[:instance_index], torch.Tensor(indices_matches)
-        else:
-            #? Only one instance in the image
-            return inputs, torch.Tensor([0])
+        return inputs_new[:instance_index], torch.Tensor(indices_matches)
+    else:
+        #? Only one instance in the image
+        return inputs, torch.Tensor([0])
 
 
 def clear_keypoints(keypoints, nb_dim = 2):
@@ -238,7 +238,7 @@ def clear_keypoints(keypoints, nb_dim = 2):
             #? Set the occluded keypoints to 0
             mean =(torch.ones(mean.size())*0).to(keypoints.device) 
         
-        if process_mode =='zero' or process_mode == 'mean' or process_mode == 'neg':
+        if process_mode in ('zero', 'mean', 'neg'):
             if (keypoints[i,nb_dim, :]<=0).sum() != 0: # BE SURE THAT THE CONFIDENCE IS NOT EQUAL TO 0
                 keypoints[i, 0:nb_dim, (keypoints[i,nb_dim, :]<=0)] = torch.transpose(mean.repeat((keypoints[i,nb_dim, :]<=0).sum() , 1), 0, 1)
 
@@ -456,7 +456,7 @@ def extract_outputs(outputs, tasks=(), kps_3d = False):
 
         if len(tasks)>1 and "z_kp0" in tasks:
             for i in range(kps_size):
-               dic_out['z_kp'+str(i)] = outputs[:, -kps_size+i:]
+                dic_out['z_kp'+str(i)] = outputs[:, -kps_size+i:]
         
 
     # Multi-task training
@@ -518,8 +518,8 @@ def extract_labels(labels, tasks=None, kps_3d = False):
         dic_gt_out['z_kps'] = labels[:, -kps_size:]
 
         if tasks is not None and "z_kp0" in tasks:
-                for i in range(kps_size):
-                    dic_gt_out['z_kp'+str(i)] = labels[:, -kps_size+i:]
+            for i in range(kps_size):
+                dic_gt_out['z_kp'+str(i)] = labels[:, -kps_size+i:]
 
     if tasks is not None:
         try:

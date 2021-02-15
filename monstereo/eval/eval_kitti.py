@@ -9,6 +9,7 @@ import math
 import logging
 import datetime
 from collections import defaultdict
+import numpy as np
 
 from tabulate import tabulate
 
@@ -153,12 +154,9 @@ class EvalKitti:
                                        self.dic_stds[key][clst], key)
                     except ZeroDivisionError:
                         print('\n'+'-'*100 + '\n'+f'ERROR: method {key} at cluster {clst} is empty' + '\n'+'-'*100+'\n')
-                        self.logger.info('\n'+'-'*100 + '\n'+f'ERROR: method {key} at cluster {clst} is empty' + '\n'+'-'*100+'\n')
-                        raise
 
             # Show statistics
             print('\n' + self.category.upper() + ':')
-            self.logger.info('\n' + self.category.upper() + ':')
             #self.show_statistics()
             self.show_statistics_logger()
 
@@ -386,7 +384,7 @@ class EvalKitti:
                     self.logger.info("\nMatched annotations: {:.1f} %".format(self.errors[key]['matched']))
                     self.logger.info(" Detected annotations : {}/{} ".format(self.dic_cnt[key], self.cnt_gt['all']))
                     self.logger.info("-" * 100)
-                except(TypeError):
+                except TypeError:
                     self.logger.info("Nothing detected")
             self.logger.info("precision 1: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_1']))
             self.logger.info("precision 2: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_2']))
@@ -446,7 +444,7 @@ class EvalKitti:
                     print("\nMatched annotations: {:.1f} %".format(self.errors[key]['matched']))
                     print(" Detected annotations : {}/{} ".format(self.dic_cnt[key], self.cnt_gt['all']))
                     print("-" * 100)
-                except(TypeError):
+                except TypeError:
                     print("Nothing detected")
             print("precision 1: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_1']))
             print("precision 2: {:.2f}".format(self.dic_stats['test']['monoloco']['all']['prec_2']))
@@ -485,7 +483,6 @@ class EvalKitti:
             boxes_gt, ys, truncs_gt, occs_gt = out_gt
             for label in ys:
                 heights.append(label[4])
-        import numpy as np
         tail1, tail2 = np.nanpercentile(np.array(heights), [5, 95])
         print(average(heights))
         print(len(heights))
@@ -526,7 +523,7 @@ def add_true_negatives(err, cnt_gt):
     err['matched'] = 100 * matched / cnt_gt
 
 
-def find_cluster(dd, clusters): #! Outdated function. Does not work with the current value inputed. PLS do not consider. 
+def find_cluster(dd, clusters): #! Outdated function. Does not work with the current value inputed. PLS do not consider.
     """Find the correct cluster. Above the last cluster goes into "excluded (together with the ones from kitti cat"""
 
     for idx, clst in enumerate(clusters[:-1]):  #easy, moderate, hard
