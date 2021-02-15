@@ -56,7 +56,7 @@ This is true dor every regular commands that you are using monstereo with.
 
 ## Self-attention usage
 
-Self-attention is primarly used to improve the performances when the model is faced with severely occluded instances.
+Self-attention is used to improve the performances when the model is faced with severely occluded instances. The objective was to use self-attention to deduce the impact of the occluded keypoitns by deducting them from the non-occluded ones. This techniques yields better results that the previous monoloco_pp baseline for vehicles.
 
 To use the self-attention mechanism, the tag ```--transformer``` needs to be added at the end of your command such as in :
 
@@ -91,13 +91,17 @@ To train the apolloscape network, input the following kind of command (precise a
 
 ## 3D keypoints projection
 
-With the apolloscape dataset only, the network can be trained to predict the depth component of each visible 2D keypoint predicted with monstereo.
+With the apolloscape dataset only, the network can be trained to predict the depth component of each visible 2D keypoints predicted with monstereo. The input data is acquired by using the 2D key-points from openpifpaf and re-projecting them to the 3D space to match the 3D CAD model of apolloscape. The matching thus gives us the depth component of each key-point used for the training.
 
 To do so, add the ```--kps_3d``` tag within your command line during training, dataset preparation and prediction such as :
 
 ```python3 -m  monstereo.run prep --dir_ann data/apollo-pifpaf/annotations_loose --monocular --vehicles --dataset apolloscape --dropout 0.3 --confidence --kps_3d```
 
 ## Scene disposition
+
+The scene disposition is a technique that we developed with the self-attention mechanism. The goal wa to see if, just as with the self-attention mechanism at the instance-level could learn the contribution of the occluded keypoints, we wanted to see if self-attention could refine the end-results by looking at all the vehicles in a scene.
+
+To do so, the inputs are not a set of keypoints but a "mini-batch" of scene containing the flattened keypoints.
 
 To process the inputs at the "scene" level, just add the ```--scene_disp``` within the command line such as with :
 
